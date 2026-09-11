@@ -324,63 +324,100 @@ body {
   font-family: "Inter", system-ui, -apple-system, sans-serif !important;
 }
 
-/* ─── Truck Map Card & Pallet Dots (Stil Desen Tehnic) ────────────────── */
+/* ─── Truck Map Locator Pin (Cu cerc albastru de locație la bază) ─────── */
 .truck-map-marker {
   background: transparent !important;
   border: none !important;
 }
 
-.truck-map-card {
-  background: #ffffff;
-  border: 1.5px solid #1e293b;
-  border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
-  padding: 8px 10px;
-  width: 255px;
-  font-family: inherit;
-  transition: all 0.15s ease;
+.truck-map-locator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
 }
 
-.truck-map-card:hover {
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.2);
+.truck-locator-badge {
+  background: #ffffff;
+  border: 1.5px solid #0f172a;
+  border-radius: 6px;
+  padding: 3px 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  width: 142px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.truck-locator-badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.28);
   border-color: #2563eb;
 }
 
-.truck-svg-box {
+.truck-svg-holder {
   width: 100%;
-  height: 50px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 4px;
-  margin-bottom: 5px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.pallets-dots-grid {
+.truck-locator-footer {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2.5px;
-  margin: 4px 0;
-  max-width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 700;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 2px;
+  margin-top: 2px;
 }
 
-.pallet-dot-occupied {
-  width: 5.5px;
-  height: 5.5px;
+.locator-plate {
+  font-family: monospace;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 0 3px;
+  border-radius: 2px;
+  color: #0f172a;
+}
+
+.locator-gps-active {
+  color: #15803d;
+  font-weight: 800;
+}
+
+.locator-gps-inactive {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.truck-locator-stem {
+  width: 2px;
+  height: 9px;
+  background: #2563eb;
+  margin: 0 auto;
+}
+
+.truck-locator-anchor-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.25);
+  border: 2px solid #2563eb;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.pulse-center-dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #2563eb;
-  flex-shrink: 0;
 }
 
-.pallet-dot-free {
-  width: 5.5px;
-  height: 5.5px;
-  border-radius: 50%;
-  border: 1px solid #94a3b8;
-  background: #ffffff;
-  flex-shrink: 0;
-}
 
 

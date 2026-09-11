@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/ui/Sidebar";
 import { DistrictInfo, AvailableTruck, CalculatedRoute } from "@/components/map/RealMoldovaMap";
+import VehicleBlueprintSVG, { PlacedPallet, PalletFormatType } from "@/components/logistics/VehicleBlueprintSVG";
 
 // Import dinamic pentru Leaflet pe client
 const RealMoldovaMap = dynamic(() => import("@/components/map/RealMoldovaMap"), {
@@ -63,6 +64,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     fuelLevelPercent: 78,
     lat: 47.025,
     lon: 28.85,
+    layoutOrientation: "2_WIDE",
   },
   {
     id: "trk-02",
@@ -108,6 +110,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     temperatureCelsius: 3.8,
     lat: 47.39,
     lon: 28.81,
+    layoutOrientation: "2_WIDE",
   },
   {
     id: "trk-04",
@@ -130,6 +133,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     fuelLevelPercent: 55,
     lat: 46.90,
     lon: 29.15,
+    layoutOrientation: "2_WIDE",
   },
   {
     id: "trk-05",
@@ -152,6 +156,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     fuelLevelPercent: 70,
     lat: 45.91,
     lon: 28.19,
+    layoutOrientation: "2_WIDE",
   },
   {
     id: "trk-06",
@@ -174,12 +179,15 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     fuelLevelPercent: 82,
     lat: 47.01,
     lon: 28.87,
+    layoutOrientation: "2_WIDE",
   },
 ];
 
 const CHAT_STORAGE_KEY = "optifleet_ai_chat_session";
+const TRUCKS_STORAGE_KEY = "optifleet_custom_trucks";
 
 export default function MapPage() {
+  const [trucksList, setTrucksList] = useState<AvailableTruck[]>(INITIAL_TRUCKS);
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictInfo>(ALL_DISTRICTS[0]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
@@ -193,6 +201,12 @@ export default function MapPage() {
   const [isCalculatingRoute, setIsCalculatingRoute] = useState<boolean>(false);
   const [activeRoute, setActiveRoute] = useState<CalculatedRoute | null>(null);
 
+  // Stare Modal Configurator Interior Paleți (Clic pe camion sau pe interiorul mașinii)
+  const [configTruck, setConfigTruck] = useState<AvailableTruck | null>(null);
+  const [activePalletTool, setActivePalletTool] = useState<PalletFormatType>("EURO_2");
+  const [editingPallets, setEditingPallets] = useState<PlacedPallet[]>([]);
+  const [editingOrientation, setEditingOrientation] = useState<"2_WIDE" | "3_LONG">("2_WIDE");
+
   // Stare Panou Dreapta: "Gândurile la Inteligență" (AI Reasoning & Copilot)
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(true);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
@@ -200,7 +214,22 @@ export default function MapPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; time: string }>>([]);
 
-  // 1. Restaurare istoric conversație din localStorage (persistent la ieșire/reintrare)
+  // Restaurare camioane customizate din localStorage la inițializare
+  useEffect(() => {
+    try {
+      const savedTrucks = localStorage.getItem(TRUCKS_STORAGE_KEY);
+      if (savedTrucks) {
+        const parsed = JSON.parse(savedTrucks);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setTrucksList(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("Eroare la citire camioane salvate:", e);
+    }
+  }, []);
+
+  // Restaurare istoric conversație din localStorage (persistent la ieșire/reintrare)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CHAT_STORAGE_KEY);
@@ -240,7 +269,6 @@ export default function MapPage() {
     []
   );
 
-  // Verificare conexiune Ollama
   const checkAiConnection = async () => {
     try {
       const res = await fetch("/api/chat");
@@ -260,6 +288,87 @@ export default function MapPage() {
     setTimeout(() => {
       window.dispatchEvent(new Event("resize"));
     }, 320);
+  };
+
+  // Deschidere Configurator Interior Paleți pentru un camion
+  const handleOpenTruckConfig = (truck: AvailableTruck) => {
+    setConfigTruck(truck);
+    setEditingOrientation(truck.layoutOrientation || "2_WIDE");
+
+    if (truck.customPallets && truck.customPallets.length > 0) {
+      setEditingPallets([...truck.customPallets]);
+    } else {
+      // Inițializare implicită bazată pe paleții ocupați
+      const occupied = Math.max(0, truck.totalPallets - truck.freePallets);
+      const rows = truck.layoutOrientation === "3_LONG" ? 3 : 2;
+      const initialP: PlacedPallet[] = [];
+      let count = 0;
+
+      for (let c = 0; c < 10; c++) {
+        for (let r = 0; r < rows; r++) {
+          if (count < occupied) {
+            initialP.push({
+              id: `p-${c}-${r}`,
+              col: c,
+              row: r,
+              format: rows === 3 ? "EURO_3" : "EURO_2",
+            });
+            count++;
+          }
+        }
+      }
+      setEditingPallets(initialP);
+    }
+  };
+
+  // Clic direct pe o celulă din interiorul caroseriei pentru adăugare / ștergere palet
+  const handleTogglePalletSlot = (col: number, row: number) => {
+    setEditingPallets((prev) => {
+      const existingIndex = prev.findIndex((p) => p.col === col && (p.row === row || p.format === "OVERSIZED_DOUBLE"));
+
+      if (existingIndex >= 0) {
+        // Dacă e deja ocupat, îl eliminăm (scoatere palet)
+        return prev.filter((_, idx) => idx !== existingIndex);
+      } else {
+        // Adăugăm un nou palet de formatul selectat
+        const newPallet: PlacedPallet = {
+          id: `p-${col}-${row}-${Date.now()}`,
+          col,
+          row: activePalletTool === "OVERSIZED_DOUBLE" ? 0 : row,
+          format: activePalletTool,
+        };
+        return [...prev, newPallet];
+      }
+    });
+  };
+
+  // Salvarea încărcăturii configurate pe camion (se reflectă imediat pe hartă)
+  const handleSaveTruckConfiguration = () => {
+    if (!configTruck) return;
+
+    const rowsCount = editingOrientation === "3_LONG" ? 3 : 2;
+    const totalSlots = configTruck.totalPallets > 0 ? configTruck.totalPallets : 33;
+    const occupiedCount = editingPallets.reduce((acc, p) => {
+      if (p.format === "OVERSIZED_DOUBLE") return acc + rowsCount * 2;
+      return acc + 1;
+    }, 0);
+
+    const updatedTruck: AvailableTruck = {
+      ...configTruck,
+      customPallets: [...editingPallets],
+      layoutOrientation: editingOrientation,
+      freePallets: Math.max(0, totalSlots - occupiedCount),
+    };
+
+    setTrucksList((prev) => {
+      const next = prev.map((t) => (t.id === updatedTruck.id ? updatedTruck : t));
+      try {
+        localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    setConfigTruck(null);
   };
 
   // Calculare Traseu Rutier Real (OSRM)
@@ -288,7 +397,6 @@ export default function MapPage() {
         const data = await res.json();
         if (data.routes && data.routes.length > 0) {
           setActiveRoute(data.routes[0]);
-          // Deschidem automat panoul din dreapta cu gândurile AI
           setIsAiDrawerOpen(true);
         }
       }
@@ -299,7 +407,7 @@ export default function MapPage() {
     }
   };
 
-  // Căutare Raion sau Traseu (Când utilizatorul scrie în bara de căutare de sus)
+  // Căutare Raion sau Traseu
   const handleSelectSearchResult = (type: "DISTRICT" | "ROUTE", item: any) => {
     setIsSearchFocused(false);
     setSearchQuery("");
@@ -316,7 +424,7 @@ export default function MapPage() {
     }
   };
 
-  // Sugestii de căutare filtrate
+  // Sugestii de căutare
   const filteredSuggestions = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) {
@@ -372,7 +480,6 @@ export default function MapPage() {
 
       const data = await res.json();
       const reply = data?.content || "Nu am primit un răspuns.";
-
       setAiConnected(data?.connected !== false);
 
       updateMessagesAndPersist((prev) => [
@@ -434,11 +541,12 @@ export default function MapPage() {
         <RealMoldovaMap
           districts={ALL_DISTRICTS}
           selectedDistrict={selectedDistrict}
-          availableTrucks={INITIAL_TRUCKS}
+          availableTrucks={trucksList}
           onSelectDistrict={(d) => {
             setSelectedDistrict(d);
             setIsAiDrawerOpen(true);
           }}
+          onSelectTruck={(t) => handleOpenTruckConfig(t)}
           onSetRouteStart={(d) => setStartDistrictId(d.id)}
           onSetRouteEnd={(d) => {
             setEndDistrictId(d.id);
@@ -449,11 +557,10 @@ export default function MapPage() {
           endDistrict={endDistObj}
         />
 
-        {/* ─── BARA DE CĂUTARE DE SUS CU SEMNUL DE CĂUTARE (Exact cerința: 'sus doar sa fie o bara cu semnul de cautare') ─── */}
+        {/* ─── BARA DE CĂUTARE DE SUS CU SEMNUL DE CĂUTARE (🔍) ─────────── */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4">
           <div className="relative">
             <div className="bg-white border-2 border-slate-900 rounded-lg shadow-md px-3.5 py-2 flex items-center gap-3">
-              {/* Semnul de căutare 🔍 */}
               <span className="text-base text-slate-800 shrink-0">🔍</span>
 
               <input
@@ -474,11 +581,9 @@ export default function MapPage() {
                 </button>
               )}
 
-              {/* Buton Calculare Traseu Rapid Chișinău - Bălți */}
               <button
                 onClick={() => handleCalculateRoute("chisinau", "balti")}
                 className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold whitespace-nowrap transition-colors"
-                title="Calculează automat ruta Chișinău ➔ Bălți"
               >
                 Traseu Chișinău - Bălți
               </button>
@@ -547,7 +652,187 @@ export default function MapPage() {
           </button>
         </div>
 
-        {/* ─── PANOU DREAPTA: GÂNDURILE LA INTELIGENȚĂ (AI REASONING & SCENARIU ÎN DIRECT) ─── */}
+        {/* ─── MODAL / DRAWER CONFIGURATOR INTERIOR PALEȚI (Exact cerința utilizatorului) ─── */}
+        {configTruck && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+            <div className="bg-white rounded-xl border-2 border-slate-900 shadow-2xl w-full max-w-4xl p-5 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+              {/* Header Configurator */}
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
+                      {configTruck.plate}
+                    </span>
+                    <h2 className="font-extrabold text-sm text-slate-900">
+                      Configurator Încărcătură · {configTruck.model}
+                    </h2>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Faceți clic pe interiorul caroseriei pentru a așeza sau scoate paleți în timp real. Modificările se vor reflecta direct pe hartă!
+                  </p>
+                </div>
+                <button
+                  onClick={() => setConfigTruck(null)}
+                  className="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 font-bold flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Selector Tip Palet & Orientare */}
+              <div className="flex items-center justify-between flex-wrap gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700">Tip Palet Activ:</span>
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { type: "EURO_2" as const, label: "Euro 2 de-a latul (Orizontal)", icon: "🟦" },
+                      { type: "EURO_3" as const, label: "Euro 3 de-a lungul (Vertical)", icon: "🟦" },
+                      { type: "OVERSIZED_DOUBLE" as const, label: "Palet Mare / Utilaj (2 Coloane)", icon: "🟪" },
+                      { type: "ISO_1000" as const, label: "Industrial ISO", icon: "🟧" },
+                    ].map((btn) => (
+                      <button
+                        key={btn.type}
+                        onClick={() => {
+                          setActivePalletTool(btn.type);
+                          if (btn.type === "EURO_3") setEditingOrientation("3_LONG");
+                          if (btn.type === "EURO_2") setEditingOrientation("2_WIDE");
+                        }}
+                        className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 border transition-all ${
+                          activePalletTool === btn.type
+                            ? "bg-blue-600 text-white border-blue-700 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span>{btn.icon}</span>
+                        <span>{btn.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      // Umple 2 rânduri
+                      const p: PlacedPallet[] = [];
+                      for (let c = 0; c < 10; c++) {
+                        p.push({ id: `p-${c}-0`, col: c, row: 0, format: "EURO_2" });
+                        p.push({ id: `p-${c}-1`, col: c, row: 1, format: "EURO_2" });
+                      }
+                      setEditingOrientation("2_WIDE");
+                      setEditingPallets(p);
+                    }}
+                    className="px-2 py-1 text-[11px] bg-white border border-slate-300 rounded font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    Umple 2 de-a latul
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Umple 3 rânduri
+                      const p: PlacedPallet[] = [];
+                      for (let c = 0; c < 10; c++) {
+                        p.push({ id: `p-${c}-0`, col: c, row: 0, format: "EURO_3" });
+                        p.push({ id: `p-${c}-1`, col: c, row: 1, format: "EURO_3" });
+                        p.push({ id: `p-${c}-2`, col: c, row: 2, format: "EURO_3" });
+                      }
+                      setEditingOrientation("3_LONG");
+                      setEditingPallets(p);
+                    }}
+                    className="px-2 py-1 text-[11px] bg-white border border-slate-300 rounded font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    Umple 3 de-a lungul
+                  </button>
+                  <button
+                    onClick={() => setEditingPallets([])}
+                    className="px-2 py-1 text-[11px] bg-white border border-red-200 text-red-600 rounded font-semibold hover:bg-red-50"
+                  >
+                    Golește Tot
+                  </button>
+                </div>
+              </div>
+
+              {/* Desenul Tehnic 2D al Camionului cu Paleții Pozitionați în Interior (Privire Profil) */}
+              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col items-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Schiță Tehnică Line-Art (Așa cum apare pe hartă):
+                </span>
+                <VehicleBlueprintSVG
+                  type={configTruck.vehicleType}
+                  hasConditioner={configTruck.hasConditioner}
+                  pallets={editingPallets}
+                  layoutOrientation={editingOrientation}
+                  className="w-full max-w-2xl h-36"
+                />
+              </div>
+
+              {/* Planșă Interactivă: Clic pe interiorul caroseriei pentru adăugare/scoatere paleți */}
+              <div className="border border-slate-300 rounded-lg p-3 bg-white">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-800">
+                    Planșă Interactivă Podea Remorcă (Clic pe celulă):
+                  </span>
+                  <span className="text-xs font-semibold text-blue-700">
+                    {editingPallets.length} paleți plasați
+                  </span>
+                </div>
+
+                {/* Grilă Podea Camion (10 coloane x 2 sau 3 rânduri) */}
+                <div className="grid grid-cols-10 gap-1.5 p-3 bg-slate-100 rounded-md border border-slate-200">
+                  {Array.from({ length: 10 }).map((_, colIdx) => (
+                    <div key={colIdx} className="flex flex-col gap-1.5">
+                      <span className="text-[10px] text-center font-bold text-slate-400">
+                        C{colIdx + 1}
+                      </span>
+                      {Array.from({ length: editingOrientation === "3_LONG" ? 3 : 2 }).map((_, rowIdx) => {
+                        const isFilled = editingPallets.some(
+                          (p) => p.col === colIdx && (p.row === rowIdx || p.format === "OVERSIZED_DOUBLE")
+                        );
+                        const matchedPallet = editingPallets.find((p) => p.col === colIdx);
+                        const isOversized = matchedPallet?.format === "OVERSIZED_DOUBLE";
+
+                        return (
+                          <div
+                            key={rowIdx}
+                            onClick={() => handleTogglePalletSlot(colIdx, rowIdx)}
+                            className={`h-12 rounded border-2 cursor-pointer transition-all flex items-center justify-center text-[10px] font-bold select-none ${
+                              isFilled
+                                ? isOversized
+                                  ? "bg-purple-600 border-purple-800 text-white"
+                                  : "bg-blue-600 border-blue-800 text-white shadow-xs"
+                                : "bg-white border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 text-slate-300"
+                            }`}
+                            title={isFilled ? "Clic pentru a scoate paletul" : "Clic pentru a adăuga palet"}
+                          >
+                            {isFilled ? (isOversized ? "UTILAJ" : "PALET") : "+"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Buton Salvare & Aplicare pe Hartă */}
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
+                <button
+                  onClick={() => setConfigTruck(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Anulează
+                </button>
+                <button
+                  onClick={handleSaveTruckConfiguration}
+                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5"
+                >
+                  <span>✓</span>
+                  <span>Salvează și Aplică pe Hartă</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── PANOU DREAPTA: GÂNDURILE LA INTELIGENȚĂ (AI LIVE REASONING) ─── */}
         {isAiDrawerOpen && (
           <div className="absolute top-0 right-0 h-full w-[410px] max-w-full bg-white border-l-2 border-slate-900 shadow-2xl z-30 flex flex-col transition-all">
             {/* Header Gânduri AI */}
@@ -577,7 +862,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            {/* Corpul Gândurilor AI (Scenariul descris de utilizator în timp real) */}
+            {/* Corpul Gândurilor AI */}
             <div className="flex-1 p-3.5 overflow-y-auto flex flex-col gap-3">
               {/* Card 1: Bariera teritorială activă */}
               <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs">
@@ -627,7 +912,7 @@ export default function MapPage() {
                   <span className="font-bold text-emerald-700 text-[11px]">GPS: ✓ Activ</span>
                 </div>
                 <div className="text-[11px] text-slate-600">
-                  Mercedes-Benz Actros 1845 · TransMold Express SRL. Localizat pe Calea Basarabiei, Chișinău. Are <strong>12 paleți liberi din 33</strong>.
+                  Mercedes-Benz Actros 1845 · TransMold Express SRL. Are <strong>12 paleți liberi din 33</strong>. Faceți clic pe camionul de pe hartă pentru a modifica așezarea paleților.
                 </div>
               </div>
 

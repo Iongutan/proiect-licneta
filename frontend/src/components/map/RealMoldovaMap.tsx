@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { VehicleBlueprintType, getVehicleSvgString } from "@/components/logistics/VehicleBlueprintSVG";
+import { VehicleBlueprintType, getVehicleSvgString, PlacedPallet } from "@/components/logistics/VehicleBlueprintSVG";
 
 export interface AvailableTruck {
   id: string;
@@ -26,6 +26,8 @@ export interface AvailableTruck {
   temperatureCelsius?: number;
   lat: number;
   lon: number;
+  customPallets?: PlacedPallet[];
+  layoutOrientation?: "2_WIDE" | "3_LONG";
 }
 
 export interface DistrictInfo {
@@ -55,6 +57,7 @@ interface RealMoldovaMapProps {
   selectedDistrict: DistrictInfo | null;
   availableTrucks: AvailableTruck[];
   onSelectDistrict: (district: DistrictInfo) => void;
+  onSelectTruck?: (truck: AvailableTruck) => void;
   onSetRouteStart?: (district: DistrictInfo) => void;
   onSetRouteEnd?: (district: DistrictInfo) => void;
   activeRoute?: CalculatedRoute | null;
@@ -77,6 +80,7 @@ export default function RealMoldovaMap({
   selectedDistrict,
   availableTrucks,
   onSelectDistrict,
+  onSelectTruck,
   onSetRouteStart,
   onSetRouteEnd,
   activeRoute,
@@ -91,8 +95,13 @@ export default function RealMoldovaMap({
   const polylineRef = useRef<L.Polyline | null>(null);
   const routeMarkersRef = useRef<L.Marker[]>([]);
 
-  // Callback-uri globale pentru butoanele de rutare din carduri
+  // Callback-uri globale pentru interacțiunea din DOM-ul Leaflet
   useEffect(() => {
+    (window as any).__optifleet_select_truck = (truckId: string) => {
+      const t = availableTrucks.find((item) => item.id === truckId);
+      if (t && onSelectTruck) onSelectTruck(t);
+    };
+
     (window as any).__optifleet_set_start = (districtId: string) => {
       const d = districts.find((item) => item.id === districtId);
       if (d && onSetRouteStart) onSetRouteStart(d);
@@ -104,10 +113,11 @@ export default function RealMoldovaMap({
     };
 
     return () => {
+      delete (window as any).__optifleet_select_truck;
       delete (window as any).__optifleet_set_start;
       delete (window as any).__optifleet_set_end;
     };
-  }, [districts, onSetRouteStart, onSetRouteEnd]);
+  }, [availableTrucks, districts, onSelectTruck, onSetRouteStart, onSetRouteEnd]);
 
   // 1. Inițializare Hartă Leaflet
   useEffect(() => {
@@ -124,7 +134,6 @@ export default function RealMoldovaMap({
       zoomControl: true,
     });
 
-    // Dale OpenStreetMap standard
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap · OptiFleet B2B Moldova",
@@ -254,7 +263,8 @@ export default function RealMoldovaMap({
     });
   }, [districts, selectedDistrict, availableTrucks, onSelectDistrict]);
 
-  // 4. Mașinile pe hartă cu schița line-art (SVG), punctele albastre de paleți și GPS ✓ / ✗
+  // 4. PICTOGRAFIERE MAȘINI ÎN FORMĂ DE LOCATOR (Cu cerc albastru de locație la bază și paleți desenați în interior)
+  // Exact specificația: 'in forma de locator unde jos au cerc albastru de locatie si asta vine deasupra lor'
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -270,97 +280,53 @@ export default function RealMoldovaMap({
 
     activeTrucks.forEach((t) => {
       const isGpsActive = Boolean(t.gpsTrackerId) && t.speedKmH >= 0;
-      const isMoving = t.speedKmH > 0;
       const occupiedPallets = Math.max(0, t.totalPallets - t.freePallets);
 
-      // Generare puncte albastre pentru paleți (Exact cum a cerut utilizatorul)
-      let dotsHtml = "";
-      if (t.totalPallets > 0) {
-        const dots = [];
-        for (let i = 0; i < t.totalPallets; i++) {
-          if (i < occupiedPallets) {
-            dots.push('<span class="pallet-dot-occupied" title="Palet Ocupat"></span>');
-          } else {
-            dots.push('<span class="pallet-dot-free" title="Loc Palet Liber"></span>');
-          }
-        }
-        dotsHtml = `<div class="pallets-dots-grid">${dots.join("")}</div>`;
-      } else {
-        dotsHtml = '<div style="font-size:10px; font-weight:600; color:#475569; margin:2px 0;">Platformă Agabaritică (Utilaje Mari & Mașini)</div>';
-      }
+      // Schiță tehnică line-art cu PALEȚII ALBAȘTRI desenați direct în interiorul caroseriei!
+      const svgString = getVehicleSvgString(
+        t.vehicleType,
+        t.hasConditioner,
+        "#0f172a",
+        "left",
+        t.customPallets,
+        occupiedPallets,
+        t.layoutOrientation || "2_WIDE"
+      );
 
-      // Schiță tehnică line-art extrasă exact ca în imaginea utilizatorului
-      const svgString = getVehicleSvgString(t.vehicleType, t.hasConditioner, "#0f172a");
-
-      const cardHtml = `
-        <div class="truck-map-card">
-          <!-- Desen tehnic Line-Art SVG (exact ca în schița din imagine) -->
-          <div class="truck-svg-box">
-            ${svgString}
-          </div>
-
-          <!-- Header Camion: Număr & Model -->
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
-            <span style="font-family: monospace; font-weight: 800; font-size: 11px; color: #0f172a; background: #f8fafc; border: 1px solid #cbd5e1; padding: 1px 5px; border-radius: 3px;">
-              ${t.plate}
-            </span>
-            <span style="font-weight: 700; font-size: 11px; color: #1d4ed8;">
-              ${t.pricePerKm} MDL/km
-            </span>
-          </div>
-
-          <div style="font-size: 11px; font-weight: 600; color: #1e293b; line-height: 1.2; margin-bottom: 3px;">
-            ${t.model}
-          </div>
-
-          <!-- Puncte Albastre Paleți (Grad de încărcare) -->
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 4px 6px; margin-bottom: 4px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; color: #334155;">
-              <span>Capacitate Marfă:</span>
-              <span style="color: #2563eb;">${t.totalPallets > 0 ? `${occupiedPallets} ocupate · ${t.freePallets} libere` : 'Agabaritic'}</span>
+      const locatorHtml = `
+        <div class="truck-map-locator" onclick="window.__optifleet_select_truck('${t.id}')" title="Clic pentru a inspecta și configura paleții">
+          <!-- 1. Corpul Camionului (Schiță tehnică cu paleți vizibili în interior) -->
+          <div class="truck-locator-badge">
+            <div class="truck-svg-holder">
+              ${svgString}
             </div>
-            ${dotsHtml}
-          </div>
-
-          <!-- Statut GPS: ✓ sau ✗ (Exact cum a cerut utilizatorul) -->
-          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
-            <div style="font-weight: 800; display: inline-flex; items-center; gap: 4px;">
-              ${
-                isGpsActive
-                  ? `<span style="color: #15803d;">GPS: ✓</span> <span style="font-weight: 500; font-size: 10px; color: #16a34a;">(${isMoving ? t.speedKmH + ' km/h' : 'Staționează'})</span>`
-                  : `<span style="color: #dc2626;">GPS: ✗</span> <span style="font-weight: 500; font-size: 10px; color: #ef4444;">(Inactiv)</span>`
-              }
+            <div class="truck-locator-footer">
+              <span class="locator-plate">${t.plate}</span>
+              <span class="${isGpsActive ? 'locator-gps-active' : 'locator-gps-inactive'}">
+                GPS ${isGpsActive ? '●' : '✗'}
+              </span>
+              <span style="color: #2563eb; font-weight: 700;">
+                ${t.totalPallets > 0 ? `${t.freePallets} liberi` : 'Utilaj'}
+              </span>
             </div>
-            <span style="font-size: 10px; color: #64748b; font-weight: 500;">
-              ${t.carrierName.split(' ')[0]}
-            </span>
           </div>
 
-          <!-- Butoane rapide rutare -->
-          <div style="display: flex; gap: 4px; margin-top: 5px; padding-top: 4px; border-top: 1px solid #f1f5f9;">
-            <button
-              onclick="window.__optifleet_set_start('${t.currentRaion}')"
-              style="flex: 1; padding: 3px 0; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; font-size: 10px; font-weight: 600; color: #15803d; cursor: pointer;"
-              title="Setează ca plecare (A)"
-            >
-              Plecare (A)
-            </button>
-            <button
-              onclick="window.__optifleet_set_end('${t.currentRaion}')"
-              style="flex: 1; padding: 3px 0; background: #fef2f2; border: 1px solid #fecaca; border-radius: 3px; font-size: 10px; font-weight: 600; color: #b91c1c; cursor: pointer;"
-              title="Setează ca sosire (B)"
-            >
-              Sosire (B)
-            </button>
+          <!-- 2. Tija de legătură -->
+          <div class="truck-locator-stem"></div>
+
+          <!-- 3. Cercul Albastru de Locație GPS la Bază (Radar Pulse) -->
+          <div class="truck-locator-anchor-circle">
+            <div class="pulse-center-dot"></div>
           </div>
         </div>
       `;
 
+      // Dimensiuni compacte: 142px lățime, 68px înălțime, ancorat la baza cercului albastru
       const truckIcon = L.divIcon({
         className: "truck-map-marker",
-        html: cardHtml,
-        iconSize: [255, 175],
-        iconAnchor: [127, 87],
+        html: locatorHtml,
+        iconSize: [142, 68],
+        iconAnchor: [71, 68],
       });
 
       const truckMarker = L.marker([t.lat, t.lon], { icon: truckIcon, zIndexOffset: 500 }).addTo(map);
