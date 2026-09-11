@@ -266,3 +266,61 @@ body {
   color: var(--color-brand);
   font-weight: 700;
 }
+
+/* ─── Leaflet Clean Hand-crafted Styles ───────────────────────────────── */
+.clean-district-label {
+  background: transparent !important;
+  border: none !important;
+}
+
+.clean-district-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+
+.clean-district-pill:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #f8fafc;
+}
+
+.clean-district-pill.is-selected {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+
+.clean-district-pill.is-selected span.count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-container {
+  font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+}
+

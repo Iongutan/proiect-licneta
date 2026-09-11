@@ -1,11 +1,45 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ChatMessage } from "@/lib/api-client";
+
+const CHAT_STORAGE_KEY = "optifleet_ai_chat_session";
 
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Restaurare istoric conversație din localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("Eroare la citire istoric chat din localStorage:", e);
+    } finally {
+      setIsInitialized(true);
+    }
+  }, []);
+
+  // Salvare istoric conversație în localStorage la fiecare actualizare
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+      } else {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.error("Eroare la salvare istoric chat în localStorage:", e);
+    }
+  }, [messages, isInitialized]);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -52,6 +86,9 @@ export function useChat() {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setStreamingContent("");
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {}
   }, []);
 
   return { messages, isLoading, streamingContent, sendMessage, clearMessages };

@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/ui/Sidebar";
 import { DistrictInfo, AvailableTruck, CalculatedRoute } from "@/components/map/RealMoldovaMap";
-import VehicleBlueprintSVG from "@/components/logistics/VehicleBlueprintSVG";
 
 // Import dinamic pentru Leaflet pe client
 const RealMoldovaMap = dynamic(() => import("@/components/map/RealMoldovaMap"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-600 gap-3">
-      <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <span className="text-sm font-semibold">Se inițializează Harta Rutieră & GPS Live...</span>
+      <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      <span className="text-xs font-semibold text-slate-700">Se încarcă Harta Rutieră a Moldovei...</span>
     </div>
   ),
 });
@@ -41,7 +40,7 @@ const ALL_DISTRICTS: DistrictInfo[] = [
   { id: "stefan_voda", name: "Raionul Ștefan Vodă", type: "RAION", lat: 46.5125, lon: 29.6631, trucksCount: 3, activeOrdersCount: 5 },
 ];
 
-// Flota Disponibilă cu Schițe CAD și Telemetrie GPS Reală
+// Flota Disponibilă cu Telemetrie GPS Reală (Fără elemente artificiale AI)
 const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-01",
@@ -56,7 +55,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     totalPallets: 33,
     freePallets: 12,
     isVerifiedANTA: true,
-    gpsTrackerId: "Teltonika FMB920 (TK-8812)",
+    gpsTrackerId: "Teltonika FMB920",
     currentRaion: "chisinau",
     destinationScope: "INTERNATIONAL",
     availableNow: true,
@@ -78,7 +77,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     totalPallets: 0,
     freePallets: 0,
     isVerifiedANTA: true,
-    gpsTrackerId: "Teltonika FMB640 (TK-9950)",
+    gpsTrackerId: "Teltonika FMB640",
     currentRaion: "balti",
     destinationScope: "INTERN",
     availableNow: true,
@@ -90,7 +89,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-03",
     plate: "FRG 404",
-    model: "Volvo FH 500 (Schmitz Cargobull Frigo)",
+    model: "Volvo FH 500 (Frigotehnic Schmitz Cargobull)",
     vehicleType: "SEMI_REEFER_33",
     carrierName: "ColdChain Moldova SRL",
     carrierPhone: "+373 79 332 110",
@@ -100,7 +99,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     totalPallets: 33,
     freePallets: 7,
     isVerifiedANTA: true,
-    gpsTrackerId: "Teltonika FMB920 + Temp (TK-4411)",
+    gpsTrackerId: "Teltonika FMB920 + Temp",
     currentRaion: "orhei",
     destinationScope: "INTERNATIONAL",
     availableNow: true,
@@ -113,7 +112,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-04",
     plate: "BST 102",
-    model: "MAN TGX 18.500 (Tren Rutier Tandem)",
+    model: "MAN TGX 18.500 (Tren Rutier Tandem 40 Paleți)",
     vehicleType: "ROAD_TRAIN_40",
     carrierName: "LogiSpeed Moldova SA",
     carrierPhone: "+373 78 445 667",
@@ -123,7 +122,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     totalPallets: 40,
     freePallets: 18,
     isVerifiedANTA: true,
-    gpsTrackerId: "Teltonika FMB920 (TK-9041)",
+    gpsTrackerId: "Teltonika FMB920",
     currentRaion: "ungheni",
     destinationScope: "INTERNATIONAL",
     availableNow: true,
@@ -135,7 +134,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-05",
     plate: "CHL 501",
-    model: "DAF CF 450 (Rigid 18t cu Lift)",
+    model: "DAF CF 450 (Camion Rigid 18t cu Lift)",
     vehicleType: "RIGID_BOX_18",
     carrierName: "SudTrans Agro SRL",
     carrierPhone: "+373 79 223 344",
@@ -145,7 +144,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     totalPallets: 18,
     freePallets: 8,
     isVerifiedANTA: true,
-    gpsTrackerId: "Teltonika FMB920 (TK-3301)",
+    gpsTrackerId: "Teltonika FMB920",
     currentRaion: "cahul",
     destinationScope: "INTERN",
     availableNow: true,
@@ -157,7 +156,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-06",
     plate: "ORH 301",
-    model: "Mercedes-Benz Sprinter 316 (Dubă Express)",
+    model: "Mercedes-Benz Sprinter 316 (Dubă Cargo Express)",
     vehicleType: "VAN_CARGO_4",
     carrierName: "OrheiTrans Rapid SRL",
     carrierPhone: "+373 60 778 990",
@@ -178,63 +177,91 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   },
 ];
 
+const CHAT_STORAGE_KEY = "optifleet_ai_chat_session";
+
 export default function MapPage() {
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictInfo>(ALL_DISTRICTS[0]);
-  const [selectedTruck, setSelectedTruck] = useState<AvailableTruck | null>(null);
-  const [scopeFilter, setScopeFilter] = useState<"ALL" | "INTERN" | "INTERNATIONAL">("ALL");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
-  // State Rutare Tip Google Maps
+  // Stare Rutare Simplă & Reale (OSRM)
   const [startDistrictId, setStartDistrictId] = useState<string>("chisinau");
   const [endDistrictId, setEndDistrictId] = useState<string>("balti");
   const [isCalculatingRoute, setIsCalculatingRoute] = useState<boolean>(false);
-  const [calculatedRoutes, setCalculatedRoutes] = useState<CalculatedRoute[]>([]);
-  const [selectedRouteId, setSelectedRouteId] = useState<string>("route-1");
-  const [isRouteDrawerOpen, setIsRouteDrawerOpen] = useState<boolean>(true);
+  const [activeRoute, setActiveRoute] = useState<CalculatedRoute | null>(null);
 
-  // State Sertar AI Copilot
+  // Stare Panou Asistent AI Qwen3
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
-  const [aiModelName, setAiModelName] = useState<string>("qwen3:14b");
-  const [aiStatusMsg, setAiStatusMsg] = useState<string>("Se verifică serverul Ollama local...");
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; time: string }>>([
-    {
-      role: "assistant",
-      content:
-        "Bună ziua! Sunt Asistentul Inteligent Logistic OptiFleet B2B. Vă pot calcula în timp real rute, tarife și disponibilitatea paleților pe coridoarele Moldovei.",
-      time: "Acum",
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; time: string }>>([]);
 
-  // Verificare status conexiune Ollama la montare
+  // 1. Restaurare istoric conversație din localStorage (nu se pierde la ieșire/reintrare)
   useEffect(() => {
-    checkAiConnection();
+    try {
+      const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(parsed);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Eroare la citire istoric chat:", e);
+    }
+
+    // Mesaj inițial implicit dacă nu există istoric anterior
+    setChatMessages([
+      {
+        role: "assistant",
+        content:
+          "Bună ziua! Sunt Asistentul Tehnic Logistic OptiFleet. Vă pot asista cu informații despre camioanele disponibile pe raioane, trasee optime pe drumurile naționale și disponibilitatea spațiului de marfă.",
+        time: "Acum",
+      },
+    ]);
   }, []);
 
+  // 2. Salvare mesaje conversație în localStorage la fiecare modificare
+  const updateMessagesAndPersist = useCallback(
+    (updater: (prev: Array<{ role: "user" | "assistant"; content: string; time: string }>) => Array<{ role: "user" | "assistant"; content: string; time: string }>) => {
+      setChatMessages((prev) => {
+        const next = updater(prev);
+        try {
+          localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(next));
+        } catch (e) {
+          console.error("Eroare la salvare istoric chat:", e);
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  // Verificare conexiune Ollama
   const checkAiConnection = async () => {
     try {
       const res = await fetch("/api/chat");
       const data = await res.json();
-      if (data.connected && data.qwenLoaded) {
-        setAiConnected(true);
-        setAiModelName(data.models?.[0] || "qwen3:14b");
-        setAiStatusMsg("Conectat la Qwen3 Local (Ollama:11434)");
-      } else if (data.connected) {
-        setAiConnected(true);
-        setAiModelName("Ollama activ (model qwen în descărcare)");
-        setAiStatusMsg("Ollama activ");
-      } else {
-        setAiConnected(false);
-        setAiStatusMsg("Ollama Deconectat. Rulați: ollama run qwen3:14b");
-      }
+      setAiConnected(data.connected === true);
     } catch {
       setAiConnected(false);
-      setAiStatusMsg("Ollama Offline (port 11434 inaccesibil)");
     }
   };
 
-  // Calculare Rută Reală OSRM (Google Maps Style)
+  useEffect(() => {
+    checkAiConnection();
+  }, []);
+
+  // Redimensionare Leaflet la colapsarea meniului lateral
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => !prev);
+    setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 320);
+  };
+
+  // Calculare Traseu Rutier Real (OSRM)
   const handleCalculateRoute = async () => {
     const startDist = ALL_DISTRICTS.find((d) => d.id === startDistrictId);
     const endDist = ALL_DISTRICTS.find((d) => d.id === endDistrictId);
@@ -256,12 +283,11 @@ export default function MapPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.routes && data.routes.length > 0) {
-          setCalculatedRoutes(data.routes);
-          setSelectedRouteId(data.routes[0].id);
+          setActiveRoute(data.routes[0]);
         }
       }
     } catch (err) {
-      console.error("Eroare calcul rută:", err);
+      console.error("Eroare calcul traseu:", err);
     } finally {
       setIsCalculatingRoute(false);
     }
@@ -274,8 +300,10 @@ export default function MapPage() {
     setEndDistrictId(temp);
   };
 
-  const startDistObj = ALL_DISTRICTS.find((d) => d.id === startDistrictId);
-  const endDistObj = ALL_DISTRICTS.find((d) => d.id === endDistrictId);
+  // Curățare traseu de pe hartă
+  const handleClearRoute = () => {
+    setActiveRoute(null);
+  };
 
   // Trimitere mesaj către Asistent AI
   const handleSendAiMessage = async (textToSend?: string) => {
@@ -283,7 +311,7 @@ export default function MapPage() {
     if (!message.trim() || aiLoading) return;
 
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setChatMessages((prev) => [...prev, { role: "user", content: message, time: timeStr }]);
+    updateMessagesAndPersist((prev) => [...prev, { role: "user", content: message, time: timeStr }]);
     if (!textToSend) setAiInput("");
     setAiLoading(true);
 
@@ -295,9 +323,6 @@ export default function MapPage() {
           message,
           cityContext: {
             name: selectedDistrict.name,
-            distKm: Math.round(
-              Math.sqrt(Math.pow(selectedDistrict.lat - 47.0105, 2) + Math.pow(selectedDistrict.lon - 28.8638, 2)) * 111
-            ),
             pendingOrders: selectedDistrict.activeOrdersCount,
             freePallets: 12,
             truckPlate: "CAN 001",
@@ -309,14 +334,14 @@ export default function MapPage() {
 
       const data = await res.json();
       const reply = data?.content || "Nu am primit un răspuns.";
-      
+
       if (data?.connected === false) {
         setAiConnected(false);
       } else {
         setAiConnected(true);
       }
 
-      setChatMessages((prev) => [
+      updateMessagesAndPersist((prev) => [
         ...prev,
         {
           role: "assistant",
@@ -326,12 +351,12 @@ export default function MapPage() {
       ]);
     } catch {
       setAiConnected(false);
-      setChatMessages((prev) => [
+      updateMessagesAndPersist((prev) => [
         ...prev,
         {
           role: "assistant",
           content:
-            "⚠️ LIPSĂ DE CONEXIUNE: Serverul Ollama nu răspunde pe portul 11434. Vă rugăm să rulați în terminal: ollama run qwen3:14b",
+            "⚠️ LIPSĂ DE CONEXIUNE LA QWEN3 LOCAL (Ollama:11434)\n\nServiciul local Ollama nu răspunde. Rulați în terminal: ollama run qwen3:14b",
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -340,313 +365,278 @@ export default function MapPage() {
     }
   };
 
-  // Camioane disponibile în raionul selectat
-  const trucksInDistrict = INITIAL_TRUCKS.filter(
-    (t) =>
-      (t.currentRaion === selectedDistrict.id || selectedDistrict.id === "chisinau") &&
-      (scopeFilter === "ALL" || t.destinationScope === scopeFilter)
-  );
+  // Resetare sesiune chat
+  const handleResetChat = () => {
+    const initial = [
+      {
+        role: "assistant" as const,
+        content: "Conversația a fost resetată. Cu ce vă pot ajuta pe coridoarele de transport din Moldova?",
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ];
+    setChatMessages(initial);
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(initial));
+    } catch (e) {}
+  };
+
+  const startDistObj = ALL_DISTRICTS.find((d) => d.id === startDistrictId) || null;
+  const endDistObj = ALL_DISTRICTS.find((d) => d.id === endDistrictId) || null;
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-slate-900">
-      {/* ─── Sidebar Principal (Stânga - Colapsabil) ───────────────────── */}
-      <Sidebar activePath="/map" />
+    <div className="h-screen w-screen flex overflow-hidden bg-slate-100">
+      {/* ─── Sidebar Principal (Colapsabil) ─────────────────────────────── */}
+      <Sidebar
+        activePath="/map"
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={handleToggleSidebar}
+      />
 
-      {/* ─── Harta Full-Screen ────────────────────────────────────────── */}
-      <div className="flex-1 h-full relative">
+      {/* ─── Container Principal Hartă Full-Screen ──────────────────────── */}
+      <div
+        className={`flex-1 h-full relative transition-all duration-300 ${
+          isSidebarCollapsed ? "ml-16" : "ml-64"
+        }`}
+      >
         <RealMoldovaMap
           districts={ALL_DISTRICTS}
           selectedDistrict={selectedDistrict}
           availableTrucks={INITIAL_TRUCKS}
-          onSelectDistrict={(d) => {
-            setSelectedDistrict(d);
-            setSelectedTruck(null);
-          }}
-          onSelectTruck={(t) => setSelectedTruck(t)}
-          scopeFilter={scopeFilter}
-          activeRoutes={calculatedRoutes}
-          selectedRouteId={selectedRouteId}
-          onSelectRouteId={(id) => setSelectedRouteId(id)}
+          onSelectDistrict={(d) => setSelectedDistrict(d)}
+          onSetRouteStart={(d) => setStartDistrictId(d.id)}
+          onSetRouteEnd={(d) => setEndDistrictId(d.id)}
+          activeRoute={activeRoute}
           startDistrict={startDistObj}
           endDistrict={endDistObj}
         />
 
-        {/* ─── Calculator Rută Stil Google Maps (Flotant Sus-Stânga) ─────── */}
-        <div className="absolute top-4 left-4 z-20 w-96 max-w-[calc(100vw-32px)]">
-          <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 p-4 transition-all">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
-                <span className="font-bold text-xs text-slate-900 uppercase tracking-wider">
-                  Calculator Rute Reale (OSRM)
-                </span>
-              </div>
-              <button
-                onClick={() => setIsRouteDrawerOpen(!isRouteDrawerOpen)}
-                className="text-slate-400 hover:text-slate-700 text-xs font-semibold px-1.5 py-0.5 rounded"
+        {/* ─── Bară Traseu Minimalistă & Curată (Stânga-Sus) ───────────────── */}
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 flex-wrap max-w-[calc(100vw-340px)]">
+          <div className="bg-white border border-slate-300 rounded-md shadow-xs px-3 py-1.5 flex items-center gap-2 text-xs">
+            {/* Origine (A) */}
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0"></span>
+              <span className="text-slate-500 font-medium">De la:</span>
+              <select
+                value={startDistrictId}
+                onChange={(e) => setStartDistrictId(e.target.value)}
+                className="bg-transparent font-semibold text-slate-900 border-none outline-none cursor-pointer max-w-[130px] truncate"
               >
-                {isRouteDrawerOpen ? "▲ Ascunde" : "▼ Deschide"}
-              </button>
+                {ALL_DISTRICTS.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {isRouteDrawerOpen && (
-              <div className="mt-3 flex flex-col gap-3">
-                {/* Selector Origine & Destinație */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 flex flex-col gap-2">
-                    {/* Origine (A) */}
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0">
-                        A
-                      </span>
-                      <select
-                        value={startDistrictId}
-                        onChange={(e) => setStartDistrictId(e.target.value)}
-                        className="bg-transparent text-xs font-semibold text-slate-800 w-full focus:outline-none"
-                      >
-                        {ALL_DISTRICTS.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+            {/* Buton Inversare (⇄) */}
+            <button
+              onClick={handleSwapRoute}
+              title="Inversează punctele"
+              className="px-1 text-slate-400 hover:text-slate-900 font-bold transition-colors"
+            >
+              ⇄
+            </button>
 
-                    {/* Destinație (B) */}
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-                      <span className="w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0">
-                        B
-                      </span>
-                      <select
-                        value={endDistrictId}
-                        onChange={(e) => setEndDistrictId(e.target.value)}
-                        className="bg-transparent text-xs font-semibold text-slate-800 w-full focus:outline-none"
-                      >
-                        {ALL_DISTRICTS.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+            {/* Destinație (B) */}
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></span>
+              <span className="text-slate-500 font-medium">Spre:</span>
+              <select
+                value={endDistrictId}
+                onChange={(e) => setEndDistrictId(e.target.value)}
+                className="bg-transparent font-semibold text-slate-900 border-none outline-none cursor-pointer max-w-[130px] truncate"
+              >
+                {ALL_DISTRICTS.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-                  {/* Buton Inversare (⇄) */}
-                  <button
-                    onClick={handleSwapRoute}
-                    title="Inversează punctele"
-                    className="w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 flex items-center justify-center text-sm font-bold shrink-0 transition-all shadow-2xs"
-                  >
-                    ⇅
-                  </button>
-                </div>
-
-                {/* Buton Calculare Traseu */}
-                <button
-                  onClick={handleCalculateRoute}
-                  disabled={isCalculatingRoute || startDistrictId === endDistrictId}
-                  className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs transition-all shadow-xs flex items-center justify-center gap-1.5"
-                >
-                  {isCalculatingRoute ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Se calculează pe șosele...</span>
-                    </>
-                  ) : (
-                    <span>Calculează Traseul Rutier</span>
-                  )}
-                </button>
-
-                {/* Rezultate Rute (Google Maps Style) */}
-                {calculatedRoutes.length > 0 && (
-                  <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      Rute Rutiere Disponibile:
-                    </span>
-
-                    {calculatedRoutes.map((route) => {
-                      const isSelected = route.id === selectedRouteId;
-                      return (
-                        <div
-                          key={route.id}
-                          onClick={() => setSelectedRouteId(route.id)}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
-                            isSelected
-                              ? "bg-blue-50/80 border-blue-600 shadow-xs"
-                              : "bg-white border-slate-200 hover:bg-slate-50"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-xs text-slate-900">{route.name}</span>
-                            <span className="font-bold text-sm text-blue-700">{route.durationFormatted}</span>
-                          </div>
-
-                          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
-                            <span>{route.summaryRoad}</span>
-                            <span className="font-semibold text-slate-700">{route.distanceKm} km</span>
-                          </div>
-
-                          <div className="mt-1.5 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-600">
-                            <span>Consum: ~{route.fuelLiters}L motorină</span>
-                            <span className="font-mono font-bold text-slate-800">
-                              Cost Estimat: {route.estimatedCostMdl} MDL
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ─── Buton Dreapta-Sus: Deschidere Asistent AI Qwen3 ──────────── */}
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-          {/* Status Badge Qwen3 */}
-          <div
-            onClick={checkAiConnection}
-            title="Clic pentru verificare conexiune"
-            className={`px-3 py-2 rounded-xl backdrop-blur-md shadow-md border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
-              aiConnected === true
-                ? "bg-emerald-50/90 text-emerald-800 border-emerald-300"
-                : aiConnected === false
-                ? "bg-amber-50/90 text-amber-800 border-amber-300"
-                : "bg-white/90 text-slate-700 border-slate-200"
-            }`}
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                aiConnected === true
-                  ? "bg-emerald-500 animate-pulse"
-                  : aiConnected === false
-                  ? "bg-amber-500"
-                  : "bg-slate-400"
-              }`}
-            />
-            <span>{aiConnected === true ? "Qwen3:14B Conectat" : "Ollama Offline"}</span>
+            {/* Buton Calcul Traseu */}
+            <button
+              onClick={handleCalculateRoute}
+              disabled={isCalculatingRoute || startDistrictId === endDistrictId}
+              className="ml-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded font-medium text-xs transition-colors flex items-center gap-1"
+            >
+              {isCalculatingRoute ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
+                  <span>Calcul...</span>
+                </>
+              ) : (
+                <span>Trasează</span>
+              )}
+            </button>
           </div>
 
-          <button
-            onClick={() => setIsAiDrawerOpen(!isAiDrawerOpen)}
-            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md border border-blue-500 transition-all flex items-center gap-2"
-          >
-            <span>Asistent AI Qwen3</span>
-            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">14B</span>
-          </button>
-        </div>
-
-        {/* ─── Panou Culisant AI în Dreapta (Slide-out Drawer) ───────────── */}
-        {isAiDrawerOpen && (
-          <div className="absolute top-0 right-0 h-full w-96 max-w-full bg-white/95 backdrop-blur-md shadow-2xl border-l border-slate-200 z-30 flex flex-col transition-all">
-            {/* Header Drawer */}
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-slate-900">Copilot Logistic Qwen3</span>
-                  <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded">
-                    LOCAL
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  Hub curent: {selectedDistrict.name}
-                </div>
+          {/* Info Traseu Activ Desenat pe Hartă */}
+          {activeRoute && (
+            <div className="bg-white border border-blue-300 rounded-md shadow-xs px-3 py-1.5 flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-2 text-slate-800 font-medium">
+                <span className="font-bold text-blue-700">{activeRoute.distanceKm} km</span>
+                <span className="text-slate-300">|</span>
+                <span className="font-semibold text-slate-700">{activeRoute.durationFormatted}</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-500 hidden sm:inline">{activeRoute.summaryRoad}</span>
               </div>
               <button
-                onClick={() => setIsAiDrawerOpen(false)}
-                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800 flex items-center justify-center font-bold text-sm"
+                onClick={handleClearRoute}
+                title="Șterge linia de traseu de pe hartă"
+                className="text-slate-400 hover:text-red-600 font-bold px-1 transition-colors"
               >
                 ✕
               </button>
             </div>
+          )}
+        </div>
 
-            {/* Alertă Transparență Stare Conexiune (Exact cum a cerut utilizatorul) */}
-            {aiConnected === false && (
-              <div className="m-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-                <div className="font-bold flex items-center gap-1 text-amber-800">
-                  <span>⚠️ LIPSĂ DE CONEXIUNE LA QWEN3 LOCAL</span>
+        {/* ─── Buton Dreapta-Sus: Deschidere Asistent AI Qwen3 ──────────── */}
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+          {/* Status Conexiune Ollama */}
+          <div
+            onClick={checkAiConnection}
+            title="Clic pentru a verifica conexiunea cu serverul Ollama"
+            className="bg-white border border-slate-300 shadow-xs px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-700 flex items-center gap-1.5 cursor-pointer hover:bg-slate-50 transition-colors"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                aiConnected === true ? "bg-emerald-500" : aiConnected === false ? "bg-amber-500" : "bg-slate-400"
+              }`}
+            />
+            <span className="hidden sm:inline">
+              {aiConnected === true ? "Qwen3 Activ" : "Ollama Offline"}
+            </span>
+          </div>
+
+          <button
+            onClick={() => setIsAiDrawerOpen(!isAiDrawerOpen)}
+            className="px-3 py-1.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs shadow-xs transition-colors flex items-center gap-1.5"
+          >
+            <span>Asistent Qwen3</span>
+          </button>
+        </div>
+
+        {/* ─── Panou Culisant AI în Dreapta (Slide Drawer) ───────────────── */}
+        {isAiDrawerOpen && (
+          <div className="absolute top-0 right-0 h-full w-96 max-w-full bg-white shadow-xl border-l border-slate-200 z-30 flex flex-col transition-all">
+            {/* Header Drawer */}
+            <div className="p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div>
+                <div className="font-bold text-xs text-slate-900 flex items-center gap-2">
+                  <span>Asistent Logistic Qwen3</span>
+                  <span className="text-[10px] text-slate-500 font-normal">· Sesiune Păstrată</span>
                 </div>
-                <p className="mt-1 text-[11px] text-amber-700 leading-relaxed">
-                  Serverul Ollama nu rulează pe portul 11434. Pentru a utiliza modelul AI local, porniți-l în terminal:
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Raion selectat: <span className="font-semibold text-slate-700">{selectedDistrict.name}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleResetChat}
+                  title="Resetează istoricul conversației"
+                  className="px-2 py-1 text-[11px] text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded transition-colors"
+                >
+                  Resetează
+                </button>
+                <button
+                  onClick={() => setIsAiDrawerOpen(false)}
+                  className="w-7 h-7 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded flex items-center justify-center font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Alertă LIPSĂ CONEXIUNE dacă Ollama nu rulează */}
+            {aiConnected === false && (
+              <div className="m-3 p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900">
+                <div className="font-bold flex items-center gap-1 text-amber-800">
+                  <span>⚠️ LIPSĂ DE CONEXIUNE LA OLLAMA LOCAL</span>
+                </div>
+                <p className="mt-1 text-[11px] text-amber-700 leading-normal">
+                  Pentru a rula asistentul AI privat pe mașina dvs., deschideți un terminal și comandați:
                 </p>
-                <div className="mt-1.5 bg-white p-1.5 rounded font-mono text-[11px] font-bold text-slate-900 border border-amber-300">
+                <div className="mt-1.5 bg-white p-1.5 rounded font-mono text-[11px] font-bold text-slate-900 border border-amber-300 select-all">
                   ollama run qwen3:14b
                 </div>
                 <button
                   onClick={checkAiConnection}
-                  className="mt-2 w-full py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] transition-all"
+                  className="mt-2 w-full py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-medium text-[11px] transition-colors"
                 >
-                  ↻ Reîncearcă Conexiunea
+                  Verifică din nou conexiunea
                 </button>
               </div>
             )}
 
-            {/* Mesaje Conversație */}
-            <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
+            {/* Listă Mesaje Conversație */}
+            <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2.5">
               {chatMessages.map((msg, i) => (
                 <div
                   key={i}
                   className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-xl p-3 text-xs leading-relaxed ${
+                    className={`max-w-[88%] rounded-lg p-2.5 text-xs leading-relaxed ${
                       msg.role === "user"
-                        ? "bg-blue-600 text-white rounded-br-none"
-                        : "bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200"
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-100 text-slate-800 border border-slate-200"
                     }`}
                   >
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   </div>
-                  <span className="text-[10px] text-slate-400 mt-1 px-1">{msg.time}</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 px-1">{msg.time}</span>
                 </div>
               ))}
 
               {aiLoading && (
-                <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
-                  <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span>Qwen3 calculează răspunsul...</span>
+                <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-500">
+                  <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Qwen3 procesează...</span>
                 </div>
               )}
             </div>
 
             {/* Sugestii Rapide */}
-            <div className="p-3 border-t border-slate-100 flex flex-wrap gap-1.5">
+            <div className="p-2 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-1">
               {[
-                `Preț transport ${selectedDistrict.name}`,
-                "Paleți disponibili",
-                "Economie grupaj",
+                `Camioane în ${selectedDistrict.name}`,
+                "Tarif mediu per km",
+                "Economie prin grupaj",
               ].map((sug, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSendAiMessage(sug)}
-                  className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border border-slate-200 text-slate-600 transition-all"
+                  className="text-[11px] px-2 py-0.5 rounded bg-white hover:bg-blue-50 hover:text-blue-700 border border-slate-200 text-slate-600 transition-colors"
                 >
                   {sug}
                 </button>
               ))}
             </div>
 
-            {/* Input Mesaj */}
-            <div className="p-3 border-t border-slate-200 bg-white">
+            {/* Formular Input */}
+            <div className="p-2.5 border-t border-slate-200 bg-white">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSendAiMessage();
                 }}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1.5"
               >
                 <input
                   type="text"
                   value={aiInput}
                   onChange={(e) => setAiInput(e.target.value)}
-                  placeholder="Întrebați Qwen3 (ex: tarif, capacitate)..."
-                  className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  placeholder="Scrieți o întrebare..."
+                  className="flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:border-blue-600"
                 />
                 <button
                   type="submit"
                   disabled={aiLoading || !aiInput.trim()}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
                 >
                   Trimite
                 </button>
@@ -654,119 +644,6 @@ export default function MapPage() {
             </div>
           </div>
         )}
-
-        {/* ─── Panou Inferior: Flota din Raion cu Schițe CAD & Telemetrie GPS ─ */}
-        <div className="absolute bottom-4 left-4 right-4 z-20 pointer-events-none">
-          <div className="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 p-4 max-w-6xl mx-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-slate-900">{selectedDistrict.name}</span>
-                <span className="text-xs text-slate-500">
-                  · {trucksInDistrict.length} camioane active · {selectedDistrict.activeOrdersCount} comenzi în tranzit
-                </span>
-              </div>
-
-              {/* Filtru Destinație */}
-              <div className="flex items-center gap-1.5 text-xs font-semibold">
-                <span className="text-slate-400 text-[11px]">Traseu:</span>
-                {(["ALL", "INTERN", "INTERNATIONAL"] as const).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setScopeFilter(s)}
-                    className={`px-2 py-0.5 rounded text-[11px] transition-all ${
-                      scopeFilter === s
-                        ? "bg-blue-600 text-white font-bold"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {s === "ALL" ? "Toate" : s === "INTERN" ? "Intern MD" : "Export RO/UE"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Listă Orizontală de Camioane cu Schițe CAD din Profil */}
-            <div className="mt-3 flex items-stretch gap-4 overflow-x-auto pb-1">
-              {trucksInDistrict.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400 w-full">
-                  Niciun vehicul disponibil în acest raion pentru filtrul selectat.
-                </div>
-              ) : (
-                trucksInDistrict.map((trk) => {
-                  const isMoving = trk.speedKmH > 0;
-                  return (
-                    <div
-                      key={trk.id}
-                      onClick={() => setSelectedTruck(trk)}
-                      className={`min-w-[340px] max-w-[360px] p-3 rounded-xl border transition-all flex flex-col justify-between cursor-pointer ${
-                        selectedTruck?.id === trk.id
-                          ? "border-blue-600 bg-blue-50/50 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-slate-300"
-                      }`}
-                    >
-                      {/* Desen CAD Tehnic din Profil (exact ca la configurator) */}
-                      <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100 mb-2">
-                        <VehicleBlueprintSVG
-                          type={trk.vehicleType}
-                          hasConditioner={trk.hasConditioner}
-                          className="w-full h-20"
-                        />
-                      </div>
-
-                      {/* Header Camion */}
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
-                            {trk.plate}
-                          </span>
-                          <span className="font-bold text-xs text-blue-700">{trk.pricePerKm} MDL / km</span>
-                        </div>
-
-                        <div className="font-semibold text-xs text-slate-900 mt-1">{trk.model}</div>
-                        <div className="text-[11px] text-slate-500">{trk.carrierName}</div>
-
-                        {/* Telemetrie GPS Live */}
-                        <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100 flex flex-col gap-1 text-[11px]">
-                          <div className="flex items-center justify-between font-semibold">
-                            <span className="flex items-center gap-1.5 text-slate-700">
-                              <span
-                                className={`w-2 h-2 rounded-full ${isMoving ? "bg-emerald-500 animate-pulse" : "bg-blue-500"}`}
-                              />
-                              {isMoving ? `În Deplasare (${trk.speedKmH} km/h)` : "La Rampă (0 km/h)"}
-                            </span>
-                            <span className="text-slate-500 font-mono text-[10px]">
-                              {trk.lat.toFixed(3)}°N, {trk.lon.toFixed(3)}°E
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between text-slate-600 text-[10px]">
-                            <span>Senzor: {trk.gpsTrackerId}</span>
-                            <span>Combustibil: {trk.fuelLevelPercent}%</span>
-                          </div>
-
-                          {trk.hasConditioner && trk.temperatureCelsius !== undefined && (
-                            <div className="text-[10px] font-bold text-blue-600 flex items-center justify-between pt-0.5 border-t border-slate-200/60">
-                              <span>Senzor Frigo Agregat:</span>
-                              <span>+{trk.temperatureCelsius}°C (Stabil)</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Detalii Paleți & Contact */}
-                        <div className="mt-2 flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                          <span className="font-semibold text-emerald-700">
-                            {trk.totalPallets > 0 ? `${trk.freePallets} paleți liberi` : "Trailă Utilaje"}
-                          </span>
-                          <span className="text-slate-500 font-mono text-[11px]">{trk.carrierPhone}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
