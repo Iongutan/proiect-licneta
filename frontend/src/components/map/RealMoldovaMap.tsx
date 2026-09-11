@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { VehicleBlueprintType } from "@/components/logistics/VehicleBlueprintSVG";
+import { VehicleBlueprintType, getVehicleSvgString } from "@/components/logistics/VehicleBlueprintSVG";
 
 export interface AvailableTruck {
   id: string;
@@ -62,6 +62,16 @@ interface RealMoldovaMapProps {
   endDistrict?: DistrictInfo | null;
 }
 
+// Normalizare nume pentru potrivire exactă cu GeoJSON
+function normalizeName(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^(mun|raionul|uta)\s+/i, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export default function RealMoldovaMap({
   districts,
   selectedDistrict,
@@ -75,11 +85,13 @@ export default function RealMoldovaMap({
 }: RealMoldovaMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<{ [id: string]: L.Marker }>({});
+  const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
+  const districtMarkersRef = useRef<{ [id: string]: L.Marker }>({});
+  const truckMarkersRef = useRef<L.Marker[]>([]);
   const polylineRef = useRef<L.Polyline | null>(null);
   const routeMarkersRef = useRef<L.Marker[]>([]);
 
-  // Asigurăm disponibilitatea callback-urilor globale pentru butoanele din popup Leaflet
+  // Callback-uri globale pentru butoanele de rutare din carduri
   useEffect(() => {
     (window as any).__optifleet_set_start = (districtId: string) => {
       const d = districts.find((item) => item.id === districtId);
@@ -97,7 +109,7 @@ export default function RealMoldovaMap({
     };
   }, [districts, onSetRouteStart, onSetRouteEnd]);
 
-  // 1. Inițializare Hartă Leaflet (Curată, simplă, fără elemente AI)
+  // 1. Inițializare Hartă Leaflet
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapInstanceRef.current) return;
@@ -112,10 +124,10 @@ export default function RealMoldovaMap({
       zoomControl: true,
     });
 
-    // Dale OpenStreetMap standard curate
+    // Dale OpenStreetMap standard
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution: "© OpenStreetMap · OptiFleet Moldova",
+      attribution: "© OpenStreetMap · OptiFleet B2B Moldova",
     }).addTo(map);
 
     mapInstanceRef.current = map;
@@ -126,111 +138,217 @@ export default function RealMoldovaMap({
     };
   }, []);
 
-  // 2. Render Etichete Raioane (Doar denumirile raioanelor interactive)
+  // 2. Încărcare Bariere Teritoriale (GeoJSON Poligoane Raioane Moldova)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Curățare markeri existenți
-    Object.values(markersRef.current).forEach((m) => m.remove());
-    markersRef.current = {};
+    fetch("/data/moldova-districts.geojson")
+      .then((res) => res.json())
+      .then((geoData) => {
+        if (geoJsonLayerRef.current) {
+          geoJsonLayerRef.current.remove();
+        }
+
+        const geoLayer = L.geoJSON(geoData, {
+          style: (feature) => {
+            const shapeName = feature?.properties?.shapeName || "";
+            const normShape = normalizeName(shapeName);
+            const isSelected =
+              selectedDistrict &&
+              (normalizeName(selectedDistrict.name).includes(normShape) ||
+                normShape.includes(normalizeName(selectedDistrict.name)) ||
+                (normShape === "gagauzia" && selectedDistrict.id === "comrat"));
+
+            return {
+              color: isSelected ? "#2563eb" : "#94a3b8",
+              weight: isSelected ? 2.5 : 1,
+              fillColor: isSelected ? "#3b82f6" : "#ffffff",
+              fillOpacity: isSelected ? 0.15 : 0.02,
+            };
+          },
+          onEachFeature: (feature, layer) => {
+            const shapeName = feature?.properties?.shapeName || "";
+            layer.on("click", () => {
+              const normShape = normalizeName(shapeName);
+              const matched = districts.find(
+                (d) =>
+                  normalizeName(d.name).includes(normShape) ||
+                  normShape.includes(normalizeName(d.name)) ||
+                  (normShape === "gagauzia" && d.id === "comrat")
+              );
+              if (matched) {
+                onSelectDistrict(matched);
+                map.flyTo([matched.lat, matched.lon], 10, { duration: 0.5 });
+              }
+            });
+          },
+        }).addTo(map);
+
+        geoJsonLayerRef.current = geoLayer;
+      })
+      .catch((err) => {
+        console.warn("Nu s-a putut încărca moldova-districts.geojson:", err);
+      });
+  }, [districts, selectedDistrict, onSelectDistrict]);
+
+  // Actualizare stil barieră teritorială la schimbarea raionului selectat
+  useEffect(() => {
+    const geoLayer = geoJsonLayerRef.current;
+    const map = mapInstanceRef.current;
+    if (!geoLayer || !map) return;
+
+    geoLayer.setStyle((feature) => {
+      const shapeName = feature?.properties?.shapeName || "";
+      const normShape = normalizeName(shapeName);
+      const isSelected =
+        selectedDistrict &&
+        (normalizeName(selectedDistrict.name).includes(normShape) ||
+          normShape.includes(normalizeName(selectedDistrict.name)) ||
+          (normShape === "gagauzia" && selectedDistrict.id === "comrat"));
+
+      return {
+        color: isSelected ? "#2563eb" : "#94a3b8",
+        weight: isSelected ? 2.5 : 1,
+        fillColor: isSelected ? "#3b82f6" : "#ffffff",
+        fillOpacity: isSelected ? 0.16 : 0.02,
+      };
+    });
+  }, [selectedDistrict]);
+
+  // 3. Etichete Denumiri Raioane
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    Object.values(districtMarkersRef.current).forEach((m) => m.remove());
+    districtMarkersRef.current = {};
 
     districts.forEach((dist) => {
       const isSelected = selectedDistrict?.id === dist.id;
 
-      // Camioanele asociate acestui raion
-      const trucksInThisDistrict = availableTrucks.filter(
+      const trucksInDistrict = availableTrucks.filter(
         (t) => t.currentRaion === dist.id || (dist.id === "chisinau" && t.currentRaion === "chisinau")
       );
 
-      // Etichetă simplă, de mână: Doar denumirea la raion interactivă
       const labelIcon = L.divIcon({
         className: "clean-district-label",
         html: `
           <div class="clean-district-pill ${isSelected ? "is-selected" : ""}">
             <span>${dist.name}</span>
-            <span class="count">${trucksInThisDistrict.length}</span>
+            <span class="count">${trucksInDistrict.length}</span>
           </div>
         `,
         iconSize: [110, 24],
         iconAnchor: [55, 12],
       });
 
-      const marker = L.marker([dist.lat, dist.lon], { icon: labelIcon }).addTo(map);
+      const marker = L.marker([dist.lat, dist.lon], { icon: labelIcon, zIndexOffset: 100 }).addTo(map);
 
-      // Construire popup curat: arată camioanele, pictograme mici și GPS activ/inactiv
-      const trucksListHtml =
-        trucksInThisDistrict.length > 0
-          ? trucksInThisDistrict
-              .map((t) => {
-                const isMoving = t.speedKmH > 0;
-                const isGpsActive = t.speedKmH >= 0 && Boolean(t.gpsTrackerId);
+      marker.on("click", () => {
+        onSelectDistrict(dist);
+        map.flyTo([dist.lat, dist.lon], 10, { duration: 0.5 });
+      });
 
-                return `
-                <div style="border: 1px solid #e2e8f0; background: #ffffff; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="display: flex; items-center: center; gap: 5px; font-weight: 700; font-size: 11px; color: #0f172a;">
-                      <span style="font-size: 13px;">🚚</span>
-                      <span style="background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-family: monospace; border: 1px solid #cbd5e1;">${t.plate}</span>
-                    </span>
-                    <span style="font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; color: ${isGpsActive ? "#15803d" : "#64748b"};">
-                      <span style="width: 6px; height: 6px; border-radius: 50%; background: ${isGpsActive ? (isMoving ? "#16a34a" : "#2563eb") : "#94a3b8"};"></span>
-                      ${isGpsActive ? (isMoving ? `GPS Activ (${t.speedKmH} km/h)` : "GPS Activ (Staționează)") : "GPS Inactiv"}
-                    </span>
-                  </div>
+      districtMarkersRef.current[dist.id] = marker;
+    });
+  }, [districts, selectedDistrict, availableTrucks, onSelectDistrict]);
 
-                  <div style="font-size: 11px; font-weight: 600; color: #334155; margin-bottom: 2px;">
-                    ${t.model}
-                  </div>
+  // 4. Mașinile pe hartă cu schița line-art (SVG), punctele albastre de paleți și GPS ✓ / ✗
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
 
-                  <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 4px; margin-top: 4px;">
-                    <span style="font-weight: 600; color: #2563eb;">
-                      ${t.totalPallets > 0 ? `${t.freePallets} paleți liberi` : "Trailă Utilaje Mari"}
-                    </span>
-                    <span style="font-weight: 700; color: #0f172a;">
-                      ${t.pricePerKm} MDL/km
-                    </span>
-                  </div>
+    // Curățare markeri mașini existenți
+    truckMarkersRef.current.forEach((m) => m.remove());
+    truckMarkersRef.current = [];
 
-                  <div style="font-size: 10px; color: #475569; margin-top: 3px;">
-                    ${t.carrierName} · <a href="tel:${t.carrierPhone}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${t.carrierPhone}</a>
-                  </div>
-                </div>
-              `;
-              })
-              .join("")
-          : `
-            <div style="color: #64748b; font-size: 11px; padding: 12px 0; text-align: center;">
-              Niciun camion staționat momentan în acest raion.
-            </div>
-          `;
+    // Afișăm mașinile din raionul selectat (sau toate dacă Chișinău e activ)
+    const activeTrucks = availableTrucks.filter(
+      (t) => t.currentRaion === selectedDistrict?.id || selectedDistrict?.id === "chisinau"
+    );
 
-      const popupHtml = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 280px; max-height: 340px; overflow-y: auto; padding: 10px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 8px;">
-            <div>
-              <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${dist.name}</div>
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">${dist.type}</div>
-            </div>
-            <span style="font-size: 11px; font-weight: 700; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; padding: 2px 6px; border-radius: 4px;">
-              ${trucksInThisDistrict.length} camioane
+    activeTrucks.forEach((t) => {
+      const isGpsActive = Boolean(t.gpsTrackerId) && t.speedKmH >= 0;
+      const isMoving = t.speedKmH > 0;
+      const occupiedPallets = Math.max(0, t.totalPallets - t.freePallets);
+
+      // Generare puncte albastre pentru paleți (Exact cum a cerut utilizatorul)
+      let dotsHtml = "";
+      if (t.totalPallets > 0) {
+        const dots = [];
+        for (let i = 0; i < t.totalPallets; i++) {
+          if (i < occupiedPallets) {
+            dots.push('<span class="pallet-dot-occupied" title="Palet Ocupat"></span>');
+          } else {
+            dots.push('<span class="pallet-dot-free" title="Loc Palet Liber"></span>');
+          }
+        }
+        dotsHtml = `<div class="pallets-dots-grid">${dots.join("")}</div>`;
+      } else {
+        dotsHtml = '<div style="font-size:10px; font-weight:600; color:#475569; margin:2px 0;">Platformă Agabaritică (Utilaje Mari & Mașini)</div>';
+      }
+
+      // Schiță tehnică line-art extrasă exact ca în imaginea utilizatorului
+      const svgString = getVehicleSvgString(t.vehicleType, t.hasConditioner, "#0f172a");
+
+      const cardHtml = `
+        <div class="truck-map-card">
+          <!-- Desen tehnic Line-Art SVG (exact ca în schița din imagine) -->
+          <div class="truck-svg-box">
+            ${svgString}
+          </div>
+
+          <!-- Header Camion: Număr & Model -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
+            <span style="font-family: monospace; font-weight: 800; font-size: 11px; color: #0f172a; background: #f8fafc; border: 1px solid #cbd5e1; padding: 1px 5px; border-radius: 3px;">
+              ${t.plate}
+            </span>
+            <span style="font-weight: 700; font-size: 11px; color: #1d4ed8;">
+              ${t.pricePerKm} MDL/km
             </span>
           </div>
 
-          <div>${trucksListHtml}</div>
+          <div style="font-size: 11px; font-weight: 600; color: #1e293b; line-height: 1.2; margin-bottom: 3px;">
+            ${t.model}
+          </div>
 
-          <div style="display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+          <!-- Puncte Albastre Paleți (Grad de încărcare) -->
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 4px 6px; margin-bottom: 4px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; color: #334155;">
+              <span>Capacitate Marfă:</span>
+              <span style="color: #2563eb;">${t.totalPallets > 0 ? `${occupiedPallets} ocupate · ${t.freePallets} libere` : 'Agabaritic'}</span>
+            </div>
+            ${dotsHtml}
+          </div>
+
+          <!-- Statut GPS: ✓ sau ✗ (Exact cum a cerut utilizatorul) -->
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
+            <div style="font-weight: 800; display: inline-flex; items-center; gap: 4px;">
+              ${
+                isGpsActive
+                  ? `<span style="color: #15803d;">GPS: ✓</span> <span style="font-weight: 500; font-size: 10px; color: #16a34a;">(${isMoving ? t.speedKmH + ' km/h' : 'Staționează'})</span>`
+                  : `<span style="color: #dc2626;">GPS: ✗</span> <span style="font-weight: 500; font-size: 10px; color: #ef4444;">(Inactiv)</span>`
+              }
+            </div>
+            <span style="font-size: 10px; color: #64748b; font-weight: 500;">
+              ${t.carrierName.split(' ')[0]}
+            </span>
+          </div>
+
+          <!-- Butoane rapide rutare -->
+          <div style="display: flex; gap: 4px; margin-top: 5px; padding-top: 4px; border-top: 1px solid #f1f5f9;">
             <button
-              onclick="window.__optifleet_set_start('${dist.id}')"
-              style="flex: 1; padding: 5px 0; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; font-size: 11px; font-weight: 600; color: #15803d; cursor: pointer;"
-              title="Setează ca punct de plecare (A)"
+              onclick="window.__optifleet_set_start('${t.currentRaion}')"
+              style="flex: 1; padding: 3px 0; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; font-size: 10px; font-weight: 600; color: #15803d; cursor: pointer;"
+              title="Setează ca plecare (A)"
             >
               Plecare (A)
             </button>
             <button
-              onclick="window.__optifleet_set_end('${dist.id}')"
-              style="flex: 1; padding: 5px 0; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; font-size: 11px; font-weight: 600; color: #b91c1c; cursor: pointer;"
-              title="Setează ca punct de destinație (B)"
+              onclick="window.__optifleet_set_end('${t.currentRaion}')"
+              style="flex: 1; padding: 3px 0; background: #fef2f2; border: 1px solid #fecaca; border-radius: 3px; font-size: 10px; font-weight: 600; color: #b91c1c; cursor: pointer;"
+              title="Setează ca sosire (B)"
             >
               Sosire (B)
             </button>
@@ -238,39 +356,32 @@ export default function RealMoldovaMap({
         </div>
       `;
 
-      marker.bindPopup(popupHtml, {
-        closeButton: true,
-        autoPan: true,
-        offset: [0, -10],
+      const truckIcon = L.divIcon({
+        className: "truck-map-marker",
+        html: cardHtml,
+        iconSize: [255, 175],
+        iconAnchor: [127, 87],
       });
 
-      marker.on("click", () => {
-        onSelectDistrict(dist);
-        marker.openPopup();
-      });
-
-      markersRef.current[dist.id] = marker;
+      const truckMarker = L.marker([t.lat, t.lon], { icon: truckIcon, zIndexOffset: 500 }).addTo(map);
+      truckMarkersRef.current.push(truckMarker);
     });
-  }, [districts, selectedDistrict, availableTrucks, onSelectDistrict]);
+  }, [availableTrucks, selectedDistrict]);
 
-  // 3. Render Rută Reală (Polyline pe drumurile naționale din Moldova)
+  // 5. Traseu Rutier Real (OSRM Polyline)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Curățare traseu anterior
     if (polylineRef.current) {
       polylineRef.current.remove();
       polylineRef.current = null;
     }
 
-    // Curățare markeri rută A și B
     routeMarkersRef.current.forEach((m) => m.remove());
     routeMarkersRef.current = [];
 
-    // Dacă avem o rută activă calculată cu puncte de geometrie
     if (activeRoute && Array.isArray(activeRoute.coordinates) && activeRoute.coordinates.length > 0) {
-      // 1. Desenare linie rutieră reală
       const polyline = L.polyline(activeRoute.coordinates, {
         color: "#2563eb",
         weight: 5,
@@ -281,39 +392,36 @@ export default function RealMoldovaMap({
 
       polylineRef.current = polyline;
 
-      // 2. Adăugare Marker Plecare (A)
       if (startDistrict) {
         const iconA = L.divIcon({
           className: "clean-district-label",
           html: `
-            <div style="background: #16a34a; color: #ffffff; border: 2px solid #ffffff; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+            <div style="background: #16a34a; color: #ffffff; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
               A
             </div>
           `,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13],
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
         });
         const markerA = L.marker([startDistrict.lat, startDistrict.lon], { icon: iconA, zIndexOffset: 1000 }).addTo(map);
         routeMarkersRef.current.push(markerA);
       }
 
-      // 3. Adăugare Marker Destinație (B)
       if (endDistrict) {
         const iconB = L.divIcon({
           className: "clean-district-label",
           html: `
-            <div style="background: #dc2626; color: #ffffff; border: 2px solid #ffffff; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+            <div style="background: #dc2626; color: #ffffff; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
               B
             </div>
           `,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13],
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
         });
         const markerB = L.marker([endDistrict.lat, endDistrict.lon], { icon: iconB, zIndexOffset: 1000 }).addTo(map);
         routeMarkersRef.current.push(markerB);
       }
 
-      // 4. Încadrare automată a rutei pe ecran
       map.fitBounds(polyline.getBounds(), {
         padding: [60, 60],
         maxZoom: 13,

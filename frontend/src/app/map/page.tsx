@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/ui/Sidebar";
 import { DistrictInfo, AvailableTruck, CalculatedRoute } from "@/components/map/RealMoldovaMap";
@@ -40,7 +40,7 @@ const ALL_DISTRICTS: DistrictInfo[] = [
   { id: "stefan_voda", name: "Raionul Ștefan Vodă", type: "RAION", lat: 46.5125, lon: 29.6631, trucksCount: 3, activeOrdersCount: 5 },
 ];
 
-// Flota Disponibilă cu Telemetrie GPS Reală (Fără elemente artificiale AI)
+// Flota Disponibilă cu Telemetrie GPS Reală
 const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-01",
@@ -67,7 +67,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-02",
     plate: "TRL 901",
-    model: "Scania R500 (Trailă Utilaje Mari & Mașini)",
+    model: "Scania R500 (Autospecială / Trailă Utilaje)",
     vehicleType: "MACHINERY_LOWBED",
     carrierName: "AgroTrans Heavy Haulage SRL",
     carrierPhone: "+373 68 990 112",
@@ -89,7 +89,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-03",
     plate: "FRG 404",
-    model: "Volvo FH 500 (Frigotehnic Schmitz Cargobull)",
+    model: "Volvo FH 500 (Frigotehnic Schmitz)",
     vehicleType: "SEMI_REEFER_33",
     carrierName: "ColdChain Moldova SRL",
     carrierPhone: "+373 79 332 110",
@@ -112,7 +112,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-04",
     plate: "BST 102",
-    model: "MAN TGX 18.500 (Tren Rutier Tandem 40 Paleți)",
+    model: "MAN TGX 18.500 (Tren Rutier Tandem)",
     vehicleType: "ROAD_TRAIN_40",
     carrierName: "LogiSpeed Moldova SA",
     carrierPhone: "+373 78 445 667",
@@ -123,18 +123,18 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     freePallets: 18,
     isVerifiedANTA: true,
     gpsTrackerId: "Teltonika FMB920",
-    currentRaion: "ungheni",
+    currentRaion: "anenii_noi",
     destinationScope: "INTERNATIONAL",
     availableNow: true,
     speedKmH: 82,
     fuelLevelPercent: 55,
-    lat: 47.21,
-    lon: 27.81,
+    lat: 46.90,
+    lon: 29.15,
   },
   {
     id: "trk-05",
     plate: "CHL 501",
-    model: "DAF CF 450 (Camion Rigid 18t cu Lift)",
+    model: "DAF CF 450 (Rigid 18t cu Lift)",
     vehicleType: "RIGID_BOX_18",
     carrierName: "SudTrans Agro SRL",
     carrierPhone: "+373 79 223 344",
@@ -156,7 +156,7 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
   {
     id: "trk-06",
     plate: "ORH 301",
-    model: "Mercedes-Benz Sprinter 316 (Dubă Cargo Express)",
+    model: "Mercedes-Benz Sprinter 316 (Dubă Express)",
     vehicleType: "VAN_CARGO_4",
     carrierName: "OrheiTrans Rapid SRL",
     carrierPhone: "+373 60 778 990",
@@ -183,20 +183,24 @@ export default function MapPage() {
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictInfo>(ALL_DISTRICTS[0]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
-  // Stare Rutare Simplă & Reale (OSRM)
+  // Stare Bară de Căutare (Sus)
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
+
+  // Stare Rutare (A spre B)
   const [startDistrictId, setStartDistrictId] = useState<string>("chisinau");
   const [endDistrictId, setEndDistrictId] = useState<string>("balti");
   const [isCalculatingRoute, setIsCalculatingRoute] = useState<boolean>(false);
   const [activeRoute, setActiveRoute] = useState<CalculatedRoute | null>(null);
 
-  // Stare Panou Asistent AI Qwen3
-  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
+  // Stare Panou Dreapta: "Gândurile la Inteligență" (AI Reasoning & Copilot)
+  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(true);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; time: string }>>([]);
 
-  // 1. Restaurare istoric conversație din localStorage (nu se pierde la ieșire/reintrare)
+  // 1. Restaurare istoric conversație din localStorage (persistent la ieșire/reintrare)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CHAT_STORAGE_KEY);
@@ -211,18 +215,16 @@ export default function MapPage() {
       console.error("Eroare la citire istoric chat:", e);
     }
 
-    // Mesaj inițial implicit dacă nu există istoric anterior
     setChatMessages([
       {
         role: "assistant",
         content:
-          "Bună ziua! Sunt Asistentul Tehnic Logistic OptiFleet. Vă pot asista cu informații despre camioanele disponibile pe raioane, trasee optime pe drumurile naționale și disponibilitatea spațiului de marfă.",
+          "Bună ziua! Sunt Asistentul Tehnic Logistic OptiFleet. Monitorizez în timp real barierele teritoriale, pozițiile GPS ale camioanelor și disponibilitatea spațiului de marfă pentru grupaj pe coridoarele din Moldova.",
         time: "Acum",
       },
     ]);
   }, []);
 
-  // 2. Salvare mesaje conversație în localStorage la fiecare modificare
   const updateMessagesAndPersist = useCallback(
     (updater: (prev: Array<{ role: "user" | "assistant"; content: string; time: string }>) => Array<{ role: "user" | "assistant"; content: string; time: string }>) => {
       setChatMessages((prev) => {
@@ -253,7 +255,6 @@ export default function MapPage() {
     checkAiConnection();
   }, []);
 
-  // Redimensionare Leaflet la colapsarea meniului lateral
   const handleToggleSidebar = () => {
     setIsSidebarCollapsed((prev) => !prev);
     setTimeout(() => {
@@ -262,9 +263,12 @@ export default function MapPage() {
   };
 
   // Calculare Traseu Rutier Real (OSRM)
-  const handleCalculateRoute = async () => {
-    const startDist = ALL_DISTRICTS.find((d) => d.id === startDistrictId);
-    const endDist = ALL_DISTRICTS.find((d) => d.id === endDistrictId);
+  const handleCalculateRoute = async (customStartId?: string, customEndId?: string) => {
+    const sId = customStartId || startDistrictId;
+    const eId = customEndId || endDistrictId;
+
+    const startDist = ALL_DISTRICTS.find((d) => d.id === sId);
+    const endDist = ALL_DISTRICTS.find((d) => d.id === eId);
 
     if (!startDist || !endDist || startDist.id === endDist.id) return;
 
@@ -284,6 +288,8 @@ export default function MapPage() {
         const data = await res.json();
         if (data.routes && data.routes.length > 0) {
           setActiveRoute(data.routes[0]);
+          // Deschidem automat panoul din dreapta cu gândurile AI
+          setIsAiDrawerOpen(true);
         }
       }
     } catch (err) {
@@ -293,17 +299,49 @@ export default function MapPage() {
     }
   };
 
-  // Inversare Origine și Destinație
-  const handleSwapRoute = () => {
-    const temp = startDistrictId;
-    setStartDistrictId(endDistrictId);
-    setEndDistrictId(temp);
+  // Căutare Raion sau Traseu (Când utilizatorul scrie în bara de căutare de sus)
+  const handleSelectSearchResult = (type: "DISTRICT" | "ROUTE", item: any) => {
+    setIsSearchFocused(false);
+    setSearchQuery("");
+
+    if (type === "DISTRICT") {
+      setSelectedDistrict(item);
+      setIsAiDrawerOpen(true);
+    } else if (type === "ROUTE") {
+      setStartDistrictId(item.startId);
+      setEndDistrictId(item.endId);
+      const startObj = ALL_DISTRICTS.find((d) => d.id === item.startId);
+      if (startObj) setSelectedDistrict(startObj);
+      handleCalculateRoute(item.startId, item.endId);
+    }
   };
 
-  // Curățare traseu de pe hartă
-  const handleClearRoute = () => {
-    setActiveRoute(null);
-  };
+  // Sugestii de căutare filtrate
+  const filteredSuggestions = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) {
+      return [
+        { type: "ROUTE", title: "Chișinău ➔ Bălți (Coridor M5/R14)", startId: "chisinau", endId: "balti" },
+        { type: "ROUTE", title: "Chișinău ➔ Ungheni (Vama Sculeni)", startId: "chisinau", endId: "ungheni" },
+        { type: "DISTRICT", title: "Mun. Chișinău (18 camioane)", district: ALL_DISTRICTS[0] },
+        { type: "DISTRICT", title: "Mun. Bălți (11 camioane)", district: ALL_DISTRICTS[1] },
+        { type: "DISTRICT", title: "Raionul Orhei (7 camioane)", district: ALL_DISTRICTS[2] },
+      ];
+    }
+
+    const matches: any[] = [];
+    ALL_DISTRICTS.forEach((d) => {
+      if (d.name.toLowerCase().includes(q)) {
+        matches.push({ type: "DISTRICT", title: `${d.name} (${d.trucksCount} camioane)`, district: d });
+      }
+    });
+
+    if (q.includes("chisinau") || q.includes("balti") || q.includes("spre")) {
+      matches.unshift({ type: "ROUTE", title: "Traseu: Chișinău ➔ Bălți", startId: "chisinau", endId: "balti" });
+    }
+
+    return matches;
+  }, [searchQuery]);
 
   // Trimitere mesaj către Asistent AI
   const handleSendAiMessage = async (textToSend?: string) => {
@@ -335,11 +373,7 @@ export default function MapPage() {
       const data = await res.json();
       const reply = data?.content || "Nu am primit un răspuns.";
 
-      if (data?.connected === false) {
-        setAiConnected(false);
-      } else {
-        setAiConnected(true);
-      }
+      setAiConnected(data?.connected !== false);
 
       updateMessagesAndPersist((prev) => [
         ...prev,
@@ -365,7 +399,6 @@ export default function MapPage() {
     }
   };
 
-  // Resetare sesiune chat
   const handleResetChat = () => {
     const initial = [
       {
@@ -384,7 +417,7 @@ export default function MapPage() {
   const endDistObj = ALL_DISTRICTS.find((d) => d.id === endDistrictId) || null;
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-slate-100">
+    <div className="h-screen w-screen flex overflow-hidden bg-slate-100 font-sans">
       {/* ─── Sidebar Principal (Colapsabil) ─────────────────────────────── */}
       <Sidebar
         activePath="/map"
@@ -392,7 +425,7 @@ export default function MapPage() {
         onToggleCollapse={handleToggleSidebar}
       />
 
-      {/* ─── Container Principal Hartă Full-Screen ──────────────────────── */}
+      {/* ─── Container Principal Hartă ──────────────────────────────────── */}
       <div
         className={`flex-1 h-full relative transition-all duration-300 ${
           isSidebarCollapsed ? "ml-16" : "ml-64"
@@ -402,143 +435,136 @@ export default function MapPage() {
           districts={ALL_DISTRICTS}
           selectedDistrict={selectedDistrict}
           availableTrucks={INITIAL_TRUCKS}
-          onSelectDistrict={(d) => setSelectedDistrict(d)}
+          onSelectDistrict={(d) => {
+            setSelectedDistrict(d);
+            setIsAiDrawerOpen(true);
+          }}
           onSetRouteStart={(d) => setStartDistrictId(d.id)}
-          onSetRouteEnd={(d) => setEndDistrictId(d.id)}
+          onSetRouteEnd={(d) => {
+            setEndDistrictId(d.id);
+            handleCalculateRoute(startDistrictId, d.id);
+          }}
           activeRoute={activeRoute}
           startDistrict={startDistObj}
           endDistrict={endDistObj}
         />
 
-        {/* ─── Bară Traseu Minimalistă & Curată (Stânga-Sus) ───────────────── */}
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 flex-wrap max-w-[calc(100vw-340px)]">
-          <div className="bg-white border border-slate-300 rounded-md shadow-xs px-3 py-1.5 flex items-center gap-2 text-xs">
-            {/* Origine (A) */}
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0"></span>
-              <span className="text-slate-500 font-medium">De la:</span>
-              <select
-                value={startDistrictId}
-                onChange={(e) => setStartDistrictId(e.target.value)}
-                className="bg-transparent font-semibold text-slate-900 border-none outline-none cursor-pointer max-w-[130px] truncate"
-              >
-                {ALL_DISTRICTS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* ─── BARA DE CĂUTARE DE SUS CU SEMNUL DE CĂUTARE (Exact cerința: 'sus doar sa fie o bara cu semnul de cautare') ─── */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4">
+          <div className="relative">
+            <div className="bg-white border-2 border-slate-900 rounded-lg shadow-md px-3.5 py-2 flex items-center gap-3">
+              {/* Semnul de căutare 🔍 */}
+              <span className="text-base text-slate-800 shrink-0">🔍</span>
 
-            {/* Buton Inversare (⇄) */}
-            <button
-              onClick={handleSwapRoute}
-              title="Inversează punctele"
-              className="px-1 text-slate-400 hover:text-slate-900 font-bold transition-colors"
-            >
-              ⇄
-            </button>
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={() => setIsSearchFocused(true)}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Caută raion sau traseu (ex: Chișinău, sau Chișinău spre Bălți)..."
+                className="w-full text-xs font-semibold text-slate-900 placeholder:text-slate-400 bg-transparent outline-none"
+              />
 
-            {/* Destinație (B) */}
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></span>
-              <span className="text-slate-500 font-medium">Spre:</span>
-              <select
-                value={endDistrictId}
-                onChange={(e) => setEndDistrictId(e.target.value)}
-                className="bg-transparent font-semibold text-slate-900 border-none outline-none cursor-pointer max-w-[130px] truncate"
-              >
-                {ALL_DISTRICTS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Buton Calcul Traseu */}
-            <button
-              onClick={handleCalculateRoute}
-              disabled={isCalculatingRoute || startDistrictId === endDistrictId}
-              className="ml-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded font-medium text-xs transition-colors flex items-center gap-1"
-            >
-              {isCalculatingRoute ? (
-                <>
-                  <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
-                  <span>Calcul...</span>
-                </>
-              ) : (
-                <span>Trasează</span>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="text-slate-400 hover:text-slate-800 text-xs font-bold px-1"
+                >
+                  ✕
+                </button>
               )}
-            </button>
+
+              {/* Buton Calculare Traseu Rapid Chișinău - Bălți */}
+              <button
+                onClick={() => handleCalculateRoute("chisinau", "balti")}
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold whitespace-nowrap transition-colors"
+                title="Calculează automat ruta Chișinău ➔ Bălți"
+              >
+                Traseu Chișinău - Bălți
+              </button>
+            </div>
+
+            {/* Meniu derulant Autocompletare / Sugestii */}
+            {isSearchFocused && (
+              <div
+                onMouseDown={(e) => e.preventDefault()}
+                className="absolute top-full left-0 right-0 mt-1.5 bg-white border-2 border-slate-900 rounded-lg shadow-xl overflow-hidden max-h-72 overflow-y-auto z-30"
+              >
+                <div className="p-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
+                  Selectați o destinație sau un traseu:
+                </div>
+                {filteredSuggestions.map((sug, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleSelectSearchResult(sug.type as any, sug.district || sug)}
+                    className="px-3 py-2 text-xs font-medium text-slate-800 hover:bg-blue-50 hover:text-blue-700 cursor-pointer flex items-center justify-between border-b border-slate-100 last:border-b-0 transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>{sug.type === "ROUTE" ? "🛣️" : "📍"}</span>
+                      <span className="font-semibold">{sug.title}</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold">
+                      {sug.type === "ROUTE" ? "Traseu OSRM" : "Raion / Barieră"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Info Traseu Activ Desenat pe Hartă */}
+          {/* Indicator traseu activ dacă e calculat */}
           {activeRoute && (
-            <div className="bg-white border border-blue-300 rounded-md shadow-xs px-3 py-1.5 flex items-center gap-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-800 font-medium">
-                <span className="font-bold text-blue-700">{activeRoute.distanceKm} km</span>
+            <div className="mt-2 bg-white/95 backdrop-blur-md border border-blue-600 rounded-md shadow-sm px-3 py-1 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 font-bold text-blue-900">
+                <span>🛣️ {activeRoute.distanceKm} km</span>
                 <span className="text-slate-300">|</span>
-                <span className="font-semibold text-slate-700">{activeRoute.durationFormatted}</span>
+                <span>⏱️ {activeRoute.durationFormatted}</span>
                 <span className="text-slate-300">|</span>
-                <span className="text-slate-500 hidden sm:inline">{activeRoute.summaryRoad}</span>
+                <span className="text-slate-600 font-normal">{activeRoute.summaryRoad}</span>
               </div>
               <button
-                onClick={handleClearRoute}
-                title="Șterge linia de traseu de pe hartă"
-                className="text-slate-400 hover:text-red-600 font-bold px-1 transition-colors"
+                onClick={() => setActiveRoute(null)}
+                className="text-slate-400 hover:text-red-600 font-bold text-xs"
               >
-                ✕
+                ✕ Șterge
               </button>
             </div>
           )}
         </div>
 
-        {/* ─── Buton Dreapta-Sus: Deschidere Asistent AI Qwen3 ──────────── */}
+        {/* ─── Buton Dreapta-Sus: Deschidere / Închidere Gândurile AI ──────── */}
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-          {/* Status Conexiune Ollama */}
-          <div
-            onClick={checkAiConnection}
-            title="Clic pentru a verifica conexiunea cu serverul Ollama"
-            className="bg-white border border-slate-300 shadow-xs px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-700 flex items-center gap-1.5 cursor-pointer hover:bg-slate-50 transition-colors"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                aiConnected === true ? "bg-emerald-500" : aiConnected === false ? "bg-amber-500" : "bg-slate-400"
-              }`}
-            />
-            <span className="hidden sm:inline">
-              {aiConnected === true ? "Qwen3 Activ" : "Ollama Offline"}
-            </span>
-          </div>
-
           <button
             onClick={() => setIsAiDrawerOpen(!isAiDrawerOpen)}
-            className="px-3 py-1.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs shadow-xs transition-colors flex items-center gap-1.5"
+            className="px-3 py-2 rounded-md bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-bold text-xs shadow-md transition-colors flex items-center gap-2"
           >
-            <span>Asistent Qwen3</span>
+            <span>🧠 Gândurile AI</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                aiConnected === true ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
           </button>
         </div>
 
-        {/* ─── Panou Culisant AI în Dreapta (Slide Drawer) ───────────────── */}
+        {/* ─── PANOU DREAPTA: GÂNDURILE LA INTELIGENȚĂ (AI REASONING & SCENARIU ÎN DIRECT) ─── */}
         {isAiDrawerOpen && (
-          <div className="absolute top-0 right-0 h-full w-96 max-w-full bg-white shadow-xl border-l border-slate-200 z-30 flex flex-col transition-all">
-            {/* Header Drawer */}
-            <div className="p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div className="absolute top-0 right-0 h-full w-[410px] max-w-full bg-white border-l-2 border-slate-900 shadow-2xl z-30 flex flex-col transition-all">
+            {/* Header Gânduri AI */}
+            <div className="p-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <div className="font-bold text-xs text-slate-900 flex items-center gap-2">
-                  <span>Asistent Logistic Qwen3</span>
-                  <span className="text-[10px] text-slate-500 font-normal">· Sesiune Păstrată</span>
+                <div className="font-extrabold text-xs text-slate-900 flex items-center gap-2">
+                  <span>🧠 Gândurile Asistentului AI (Qwen3 Live)</span>
                 </div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
-                  Raion selectat: <span className="font-semibold text-slate-700">{selectedDistrict.name}</span>
+                  Raționament logistic & optimizare grupaj în timp real
                 </div>
               </div>
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleResetChat}
                   title="Resetează istoricul conversației"
-                  className="px-2 py-1 text-[11px] text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded transition-colors"
+                  className="px-2 py-1 text-[11px] text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded font-semibold transition-colors"
                 >
                   Resetează
                 </button>
@@ -551,74 +577,95 @@ export default function MapPage() {
               </div>
             </div>
 
-            {/* Alertă LIPSĂ CONEXIUNE dacă Ollama nu rulează */}
-            {aiConnected === false && (
-              <div className="m-3 p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900">
-                <div className="font-bold flex items-center gap-1 text-amber-800">
-                  <span>⚠️ LIPSĂ DE CONEXIUNE LA OLLAMA LOCAL</span>
+            {/* Corpul Gândurilor AI (Scenariul descris de utilizator în timp real) */}
+            <div className="flex-1 p-3.5 overflow-y-auto flex flex-col gap-3">
+              {/* Card 1: Bariera teritorială activă */}
+              <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs">
+                <div className="font-bold text-slate-900 flex items-center gap-1.5 mb-1">
+                  <span>📍</span>
+                  <span>Barieră Teritorială Activă: {selectedDistrict.name}</span>
                 </div>
-                <p className="mt-1 text-[11px] text-amber-700 leading-normal">
-                  Pentru a rula asistentul AI privat pe mașina dvs., deschideți un terminal și comandați:
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Perimetrul teritorial delimitat conform cadastrului administrativ național. Au fost identificate{" "}
+                  <strong>{selectedDistrict.trucksCount} vehicule</strong> cu transpondere GPS înregistrate în acest raion.
                 </p>
-                <div className="mt-1.5 bg-white p-1.5 rounded font-mono text-[11px] font-bold text-slate-900 border border-amber-300 select-all">
-                  ollama run qwen3:14b
-                </div>
-                <button
-                  onClick={checkAiConnection}
-                  className="mt-2 w-full py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-medium text-[11px] transition-colors"
-                >
-                  Verifică din nou conexiunea
-                </button>
               </div>
-            )}
 
-            {/* Listă Mesaje Conversație */}
-            <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2.5">
-              {chatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-                >
-                  <div
-                    className={`max-w-[88%] rounded-lg p-2.5 text-xs leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-100 text-slate-800 border border-slate-200"
-                    }`}
-                  >
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+              {/* Card 2: Scenariul de tranzit GPS dinamic (Anenii Noi spre Chișinău) */}
+              <div className="p-3 rounded-lg border-2 border-blue-600 bg-blue-50/60 text-xs">
+                <div className="font-bold text-blue-900 flex items-center gap-1.5 mb-1">
+                  <span>🛰️</span>
+                  <span>Oportunitate GPS Detectată (Tranzit Anenii Noi):</span>
+                </div>
+                <p className="text-[11px] text-slate-700 leading-relaxed">
+                  Camionul <strong>BST 102</strong> (LogiSpeed SA, Tren Rutier 40 paleți) se deplasează pe drumul național R2 dinspre{" "}
+                  <strong>Anenii Noi</strong> spre Chișinău cu viteza de <strong>82 km/h</strong>.
+                </p>
+                <div className="mt-2 bg-white p-2 rounded border border-blue-200 flex flex-col gap-1 text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Sosire estimată Chișinău:</span>
+                    <span className="font-bold text-slate-900">~14:20 (după GPS)</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 mt-0.5 px-1">{msg.time}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Spațiu liber pentru marfă:</span>
+                    <span className="font-bold text-emerald-700">18 paleți liberi</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Economie estimată prin grupaj:</span>
+                    <span className="font-bold text-blue-700">-45% la tarif per palet</span>
+                  </div>
                 </div>
-              ))}
+              </div>
 
-              {aiLoading && (
-                <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-500">
-                  <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span>Qwen3 procesează...</span>
+              {/* Card 3: Camion în focar Chișinău */}
+              <div className="p-3 rounded-lg border border-slate-200 bg-white text-xs">
+                <div className="font-bold text-slate-900 flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <span>🚚</span>
+                    <span>Camion gata de încărcare: CAN 001</span>
+                  </span>
+                  <span className="font-bold text-emerald-700 text-[11px]">GPS: ✓ Activ</span>
                 </div>
-              )}
+                <div className="text-[11px] text-slate-600">
+                  Mercedes-Benz Actros 1845 · TransMold Express SRL. Localizat pe Calea Basarabiei, Chișinău. Are <strong>12 paleți liberi din 33</strong>.
+                </div>
+              </div>
+
+              {/* Istoric Conversație Chat AI Persistent */}
+              <div className="pt-2 border-t border-slate-200 flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Dialog Direct cu Qwen3 (Sesiune Păstrată):
+                </span>
+
+                {chatMessages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+                  >
+                    <div
+                      className={`max-w-[90%] rounded-lg p-2.5 text-xs leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 text-slate-800 border border-slate-200"
+                      }`}
+                    >
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5 px-1">{msg.time}</span>
+                  </div>
+                ))}
+
+                {aiLoading && (
+                  <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-500">
+                    <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Qwen3 calculează logica...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Sugestii Rapide */}
-            <div className="p-2 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-1">
-              {[
-                `Camioane în ${selectedDistrict.name}`,
-                "Tarif mediu per km",
-                "Economie prin grupaj",
-              ].map((sug, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSendAiMessage(sug)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-white hover:bg-blue-50 hover:text-blue-700 border border-slate-200 text-slate-600 transition-colors"
-                >
-                  {sug}
-                </button>
-              ))}
-            </div>
-
-            {/* Formular Input */}
-            <div className="p-2.5 border-t border-slate-200 bg-white">
+            {/* Input Formular Chat */}
+            <div className="p-3 border-t border-slate-200 bg-white">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -630,13 +677,13 @@ export default function MapPage() {
                   type="text"
                   value={aiInput}
                   onChange={(e) => setAiInput(e.target.value)}
-                  placeholder="Scrieți o întrebare..."
+                  placeholder="Întrebați Qwen3 (ex: tarif, grupaj Anenii Noi)..."
                   className="flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:border-blue-600"
                 />
                 <button
                   type="submit"
                   disabled={aiLoading || !aiInput.trim()}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded text-xs font-bold transition-colors"
                 >
                   Trimite
                 </button>

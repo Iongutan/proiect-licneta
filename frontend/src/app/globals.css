@@ -324,3 +324,63 @@ body {
   font-family: "Inter", system-ui, -apple-system, sans-serif !important;
 }
 
+/* ─── Truck Map Card & Pallet Dots (Stil Desen Tehnic) ────────────────── */
+.truck-map-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.truck-map-card {
+  background: #ffffff;
+  border: 1.5px solid #1e293b;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  padding: 8px 10px;
+  width: 255px;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.truck-map-card:hover {
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.2);
+  border-color: #2563eb;
+}
+
+.truck-svg-box {
+  width: 100%;
+  height: 50px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 4px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pallets-dots-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.5px;
+  margin: 4px 0;
+  max-width: 100%;
+}
+
+.pallet-dot-occupied {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+.pallet-dot-free {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+
