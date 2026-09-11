@@ -1,0 +1,238 @@
+﻿OptiFleet &amp; GroupLog B2B
+Ghidul master — de la zero la produs funcțional, în ordine, pas cu pas
+Versiune unificată: Supabase folosit prin dashboard web (fără CLI), model local Qwen3:14b, stil minimalist alb-albastru
+Universitatea Tehnică a Moldovei (UTM)
+Student: Ion Guțan — Grupa TI-233
+Cum se folosește acest document
+Acesta e documentul de lucru zilnic — înlocuiește nevoia de a sări între documentele anterioare. Conține 15 etape, strict în ordinea în care trebuie făcute. Fiecare etapă are un PROMPT (de dat unui AI de cod, ex. Claude Code) și, imediat după, o Verificare — pași scurți pe care tu îi confirmi manual înainte de a trece mai departe.
+Reguli de bază
+Nu sări etape. Etapa 1 (Row Level Security) e marcată explicit ca blocantă — dacă nu trece verificarea, nu construiești nimic deasupra.
+Rulează un singur prompt pe rând. Testează. Abia apoi treci mai departe.
+Supabase e folosit exclusiv prin dashboard-ul web (supabase.com) — SQL Editor pentru schema, Table Editor pentru verificare vizuală, Authentication/Storage/Database pentru configurare. Nu ai nevoie de CLI sau Docker pentru partea de bază de date.
+Qwen3:14b (deja instalat local prin Ollama) intră în scenă abia la Etapa 8 — nu are treabă cu baza de date sau cu restul modulelor.
+Tabel rapid de orientare
+#
+Etapă
+Ce se întâmplă
+0
+Cont Supabase + schema + PostGIS
+Baza de date, prin dashboard web
+1
+Row Level Security
+Izolare date între firme — BLOCANT
+2
+Backend FastAPI + Auth Supabase
+Scheletul serverului, conectat la Supabase
+3
+Storage pentru documente
+Bucket pentru facturi/licențe
+4
+CRUD de bază
+Creare comenzi, vehicule, companii
+5
+Clustering (DBSCAN)
+Gruparea comenzilor
+6
+Rutare (OR-Tools)
+Optimizare trasee
+7
+Verificare transportatori &amp; contracte
+Trust, documente, contract digital
+8
+AI local — Qwen3:14b
+OCR + extragere date din documente
+9
+Copilot — Claude API
+Chat conversațional cu clienții
+10
+Frontend dashboard
+Interfața, stil alb-albastru
+11
+Supabase Realtime
+Tracking live pe hartă
+12
+Scenariul Moldova
+Testare + cifre de impact
+13
+Securitate finală &amp; cod
+Audit general
+14
+Verificare finală completă
+Scor față de cele 6 obiective oficiale
+Etapa 0 — Cont Supabase + schema + PostGIS (prin dashboard web)
+Primul lucru concret pe care îl faci. Nimic altceva nu poate începe înainte de asta.
+PROMPT 0 — Configurare Supabase (web) + schema inițială
+Efort estimat: 1 zi
+Intru pe supabase.com, apăs „New Project”, aleg un nume (OptiFleet), o parolă de bază de date (o salvez separat, în manager de parole) și regiunea cea mai apropiată. Aștept crearea proiectului.
+Din Settings → API notez Project URL, anon key și service_role key — le pun într-un fișier .env local, niciodată în cod.
+Din Database → Extensions caut „postgis” și îl activez (buton Enable).
+Acum cer AI-ului de cod: „Scrie-mi un script SQL complet, gata de rulat în SQL Editor din Supabase, care creează următoarele tabele pentru platforma OptiFleet B2B: companies (id, name, type enum SME/CARRIER/SUPPLIER, address, location GEOGRAPHY Point SRID 4326, created_at), users_profile (id, auth_user_id FK către auth.users, company_id FK, role enum MERCHANT/CARRIER/ADMIN), orders (id, company_id FK, volume_m3, weight_kg, status enum, delivery_window_start, delivery_window_end, pickup_location GEOGRAPHY Point, dropoff_location GEOGRAPHY Point, created_at), group_buy_clusters (id, status enum, total_volume, total_weight, estimated_discount, route_geometry GEOGRAPHY LineString nullable, created_at), order_cluster_link (order_id FK, cluster_id FK), vehicles (id, carrier_id FK, capacity_m3, max_weight_kg, current_city, status enum, current_location GEOGRAPHY Point), carrier_documents (id, carrier_id FK, doc_type enum, file_url, status enum PENDING/APPROVED/REJECTED, extracted_data JSONB, uploaded_at), trust_scores (id, carrier_id FK unic, on_time_pct, rating_avg, account_age_days, score), contracts (id, order_id FK, carrier_id FK, pdf_url, accepted_at nullable, content_hash), deliveries (id, order_id FK unic, confirmed_at, gps_lat, gps_lng, proof_photo_url nullable), routes (id, vehicle_id FK, cluster_id FK, waypoints_json JSONB, total_distance_km, estimated_time_min, co2_saved_kg). Adaugă și un script separat de date de test (seed): 15 magazine în Bălți, Orhei și Ungheni, 2 depozite în Chișinău, 3 vehicule (1 Chișinău, 1 în tranzit spre Bălți, 1 Comrat), cu coordonate GPS aproximative reale.”
+Copiez scriptul rezultat și îl rulez în SQL Editor din dashboard-ul Supabase (Run). Repet pentru scriptul de seed.
+✔ Verificare — Etapa 0
+Deschid Table Editor în dashboard și văd toate cele 11 tabele, cu coloanele corecte.
+Datele de test apar în tabele (15 magazine, 2 depozite, 3 vehicule) — verific vizual câteva rânduri.
+Coloanele de tip GEOGRAPHY afișează coordonate, nu erori.
+Rulez scriptul de seed a doua oară — dacă dă eroare de duplicate necontrolată, cer AI-ului să-l facă idempotent (ON CONFLICT DO NOTHING).
+Etapa 1 — Row Level Security — BLOCANT, nu treci mai departe fără asta
+De ce e blocant
+Fără RLS, orice firmă înregistrată poate citi datele altei firme prin API-ul Supabase direct — nu contează cât de bine scrii codul backend-ului, pentru că Supabase expune baza de date direct clienților.
+E singura etapă din tot documentul unde „merge la demo” nu e suficient — trebuie să fie corect.
+PROMPT 1 — Politici Row Level Security
+Efort estimat: 1-2 zile
+Cer AI-ului de cod: „Scrie-mi un script SQL, rulabil în SQL Editor din Supabase, care activează Row Level Security pe toate tabelele care conțin date specifice unei companii (orders, group_buy_clusters, vehicles, carrier_documents, trust_scores, contracts, deliveries, routes) și adaugă politici astfel încât: un utilizator cu rol MERCHANT (verificat prin users_profile, legat de auth.uid()) poate citi și modifica DOAR comenzile create de compania lui; un utilizator cu rol CARRIER poate citi doar rutele, contractele și livrările alocate lui, și poate modifica doar propriile vehicule și documente; un utilizator cu rol ADMIN poate citi tot, dar poate modifica doar documente (aprobare); group_buy_clusters este vizibil doar companiilor implicate, verificat prin order_cluster_link. Scrie o politică CREATE POLICY separată pentru SELECT, INSERT și UPDATE pe fiecare tabelă, nu una singură generică.”
+Rulez scriptul în SQL Editor. Apoi, în Authentication → Users, creez manual două conturi de test din companii diferite (test-merchant-a@test.com, test-merchant-b@test.com), le leg de câte o companie diferită în users_profile.
+✔ Verificare — Etapa 1 — NU treci mai departe până nu iese 100%
+Logat ca test-merchant-a, încerc (din SQL Editor, cu „Run as” utilizatorul respectiv, sau printr-un client API simplu) să citesc comenzile companiei B — trebuie să primesc listă vidă sau eroare, niciodată date reale.
+Testez și inserare: test-merchant-a nu poate crea o comandă cu company_id al companiei B.
+Un cont ADMIN poate aproba un document, dar nu poate crea comenzi în numele unei firme.
+Dacă orice test de mai sus eșuează (adică datele altei firme sunt vizibile), opresc tot și repar politica înainte de Etapa 2.
+Etapa 2 — Backend FastAPI + Auth Supabase
+PROMPT 2 — Scaffold backend conectat la Supabase
+Efort estimat: 1-2 zile
+Creează un proiect Python FastAPI nou (folder backend/), organizat pe module (app/api, app/services, app/core), cu clientul oficial supabase-py configurat din variabile de mediu (SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY).
+Implementează verificarea sesiunii: fiecare cerere autentificată trimite token-ul Supabase (JWT emis de Supabase Auth) în header; backend-ul îl verifică folosind biblioteca supabase-py sau verificare directă JWT cu secretul de proiect, și extrage din users_profile rolul și company_id ale utilizatorului curent, disponibile prin dependency injection FastAPI (Depends) în orice rută.
+Expune endpoint-uri simple de test: GET /health și GET /me (returnează profilul utilizatorului curent din token).
+În Supabase Dashboard → Authentication → Providers, confirmă că Email este activat pentru înregistrare/autentificare simplă.
+Criteriu de acceptare: mă înregistrez printr-un client simplu (Postman sau un formular minimal), primesc un token, iar GET /me returnează rolul și compania corecte.
+✔ Verificare — Etapa 2
+GET /health răspunde 200 fără autentificare.
+GET /me fără token dă 401, cu token valid dă profilul corect.
+Testez cu ambele conturi de test create la Etapa 1 — fiecare vede propriul profil, nu al celuilalt.
+Etapa 3 — Storage pentru documentele transportatorilor
+PROMPT 3 — Bucket Supabase Storage
+Efort estimat: 0.5-1 zi
+Din Supabase Dashboard → Storage, creez un bucket nou numit carrier-documents, marcat NEpublic.
+Cer AI-ului: „Scrie politicile de Storage (SQL, prin storage.objects) astfel încât un transportator poate încărca fișiere doar în propriul folder (calea trebuie să înceapă cu {carrier_id}/), iar un ADMIN poate citi toate fișierele din bucket. Scrie și endpoint-ul FastAPI POST /carriers/documents care primește un fișier, îl încarcă în Storage prin clientul supabase-py, și salvează calea rezultată în carrier_documents.file_url.”
+Rulez politicile SQL generate în SQL Editor.
+✔ Verificare — Etapa 3
+Încarc un fișier de test cu contul de transportator — apare în Storage, sub folderul corect.
+Încerc să accesez fișierul cu URL direct dintr-un cont diferit — primesc refuz, nu fișierul.
+Etapa 4 — CRUD de bază — comenzi, vehicule, companii
+PROMPT 4 — Endpoint-uri CRUD principale
+Efort estimat: 1-2 zile
+Implementează în backend rutele CRUD pentru companies, orders și vehicles, folosind clientul supabase-py (nu ORM separat — RLS din Supabase face deja verificarea de permisiuni la nivel de bază de date, backend-ul doar transmite cererea cu token-ul utilizatorului).
+Validare Pydantic completă: volum și greutate nu pot fi negative, delivery_window_start trebuie să fie înainte de delivery_window_end.
+Gestionare de erori centralizată — orice eroare Supabase (inclusiv refuz RLS) se traduce într-un mesaj JSON clar către client, nu un stack trace brut.
+✔ Verificare — Etapa 4
+Creez o comandă validă prin API — apare corect în Table Editor.
+Încerc o comandă cu volum negativ — primesc eroare de validare clară, nu o comandă salvată greșit.
+Confirm din nou izolarea RLS: comanda creată de firma A nu apare când cer lista de comenzi cu tokenul firmei B.
+Etapa 5 — Modulul de Clustering spațial (DBSCAN)
+PROMPT 5 — Grupare automată a comenzilor
+Efort estimat: 2-3 zile
+Implementează în backend/app/services/clustering.py un serviciu care preia comenzile PENDING dintr-o fereastră temporală configurabilă (implicit 24h), rulează DBSCAN (scikit-learn) pe coordonatele de pickup folosind distanță haversine (nu euclidiană directă pe lat/lng), și filtrează suplimentar clusterele astfel încât doar comenzile cu ferestre orare compatibile rămân împreună.
+Pentru fiecare cluster valid (minim 2 comenzi), creează o înregistrare group_buy_clusters cu volumul și greutatea agregate, leagă comenzile prin order_cluster_link.
+Expune POST /clusters/run și GET /clusters. Parametrii eps și min_samples trebuie să fie configurabili, nu hardcodați.
+✔ Verificare — Etapa 5
+Rulez clustering-ul pe datele seed și verific pe hartă (chiar și doar printr-un tabel de coordonate) că magazinele din același oraș sunt grupate împreună.
+O comandă singură, izolată geografic, rămâne outlier — nu forțată într-un cluster.
+Rulez de două ori pe rând pe aceleași date — rezultatul e identic (determinist).
+Etapa 6 — Modulul de Rutare (Google OR-Tools CVRP)
+PROMPT 6 — Optimizare trasee pentru fiecare cluster
+Efort estimat: 3-4 zile
+Implementează backend/app/services/routing.py folosind Google OR-Tools pentru CVRP cu ferestre de timp: pentru un cluster și un vehicul disponibil, calculează secvența optimă de opriri, respectând capacitatea agregată de volum și greutate (NU implementa 3D bin packing — doar sumă de volum/greutate) și ferestrele orare.
+Pentru distanțe, folosește inițial haversine × 1.3 ca aproximare (documentează explicit acest fallback); dacă vrei distanțe reale ulterior, poți integra OSRM separat, dar nu e obligatoriu pentru un prim rezultat funcțional.
+Salvează rezultatul (waypoints_json, total_distance_km, estimated_time_min, co2_saved_kg calculat cu un factor simplu kg CO2/km/tonă, citat din literatură) în routes.
+Expune POST /routes/optimize/{cluster_id}.
+✔ Verificare — Etapa 6
+Pentru un cluster din scenariul Moldova, ruta rezultată respectă capacitatea vehiculului ales — verific manual suma volumelor.
+Distanța totală calculată e mai mică decât suma distanțelor individuale necoordonate ale acelorași comenzi.
+Testez intenționat un cluster cu volum peste orice capacitate disponibilă — primesc eroare clară, nu o rută invalidă.
+Etapa 7 — Verificare transportatori, scor de încredere, contracte
+PROMPT 7 — Modulul de încredere (Trust) și contracte digitale
+Efort estimat: 3-4 zile
+Implementează:
+1. PATCH /admin/documents/{id}/review (doar ADMIN) — aprobă/respinge un document încărcat la Etapa 3.
+2. Calculul scorului de încredere: score = 0.5*on_time_pct + 0.3*(rating_avg/5) + 0.2*min(account_age_days/180, 1), recalculat după fiecare livrare confirmată.
+3. Generare contract PDF automat (reportlab sau python-docx) la momentul selecției unui transportator pentru o rută, cu hash SHA-256 salvat în contracts.content_hash.
+4. POST /contracts/{id}/accept — transportatorul acceptă digital (timestamp), doar el poate accepta propriul contract.
+5. POST /deliveries/{order_id}/confirm — primește gps_lat, gps_lng, opțional foto; declanșează recalcularea scorului.
+✔ Verificare — Etapa 7
+Un transportator cu documente respinse nu apare în lista de transportatori disponibili pentru selecție.
+Hash-ul salvat pe contract corespunde exact conținutului PDF-ului — îl recalculez și compar manual.
+Simulez 5 livrări (3 la timp, 2 întârziate) și confirm că scorul rezultat corespunde formulei, calculat manual pe hârtie.
+Etapa 8 — AI local — Qwen3:14b (procesare documente)
+Aici intră Qwen pentru prima dată. Rolul lui: citește textul OCR al unei facturi/document și îl transformă în JSON structurat. Nimic mai mult.
+PROMPT 8 — Pipeline OCR + extragere structurată cu Qwen3:14b
+Efort estimat: 3-4 zile
+Implementează backend/app/services/document_ai.py:
+1. OCR cu docTR sau PaddleOCR pe documentul încărcat (din bucket-ul carrier-documents sau facturi de comandă), pentru text brut.
+2. Trimite textul către Qwen3:14b prin API-ul local Ollama (http://localhost:11434/api/generate), cu system prompt strict: „Răspunde EXCLUSIV cu JSON valid, fără text explicativ, fără markdown.” Include schema exactă cerută (pentru facturi: volum_m3, greutate_kg, cod_produs, cantitate; pentru documente transportator: tip_document, numar_licenta, data_expirare).
+3. Parsează cu Pydantic; la eșec, reîncearcă o dată cu prompt mai restrictiv; dacă tot eșuează, marchează needs_manual_review = true.
+4. Temperature scăzută (0.1-0.2) pentru consistență factuală.
+5. Salvează în extracted_data (JSONB), cu confidence_flag.
+Scrie backend/scripts/eval_ocr.py care rulează pe 8-10 documente de test variate și raportează procentul de câmpuri corecte pe categorie.
+✔ Verificare — Etapa 8
+Pe documente clare, câmpurile principale sunt extrase corect.
+Pe un document intenționat ilizibil, sistemul marchează needs_manual_review, nu inventează valori.
+Notez timpul de răspuns al Qwen3 pe hardware-ul meu — dacă e prea lent, o menționez ca limitare în teză, nu o ascund.
+Etapa 9 — Copilot conversațional — Claude API
+PROMPT 9 — Agent conversațional cu function calling
+Efort estimat: 3-4 zile
+Implementează backend/app/services/copilot.py — endpoint POST /copilot/chat care primește mesaje de la utilizatorul autentificat și răspunde folosind Claude API cu function calling, mapat pe tools: get_order_status(order_id), create_order(...), list_available_carriers(city), get_cluster_info(cluster_id).
+System prompt: context despre platformă, rolul utilizatorului curent, limitări explicite (copilotul nu poate aproba documente sau modifica contracte).
+Când modelul cere un tool, execută funcția reală pe backend cu verificare de permisiuni (folosind același token/rol ca restul API-ului — RLS din Supabase se aplică automat dacă apelurile folosesc token-ul utilizatorului, nu cheia service_role).
+Păstrează istoric conversație per sesiune.
+✔ Verificare — Etapa 9
+Întreb „unde e comanda mea #X” și primesc un răspuns corect din date reale, nu inventat.
+Întreb ceva în afara scopului (&quot;aprobă-mi documentul&quot;) — copilotul refuză clar, nu încearcă să facă acțiunea.
+Testez cu un cont de transportator care întreabă despre comenzile altei firme — primește refuz, nu date.
+Etapa 10 — Frontend dashboard (Next.js, stil alb-albastru)
+Ghid de stil — include-l în promptul de mai jos
+Fundal alb (#FFFFFF), accent albastru (#2563EB, hover #1D4ED8), text aproape negru (#0F172A), text secundar gri (#64748B).
+Colțuri rotunjite subtil (6-8px), umbre foarte discrete sau deloc, fără gradient-uri.
+Un singur font (Inter sau system-ui), spațiere generoasă, fără elemente decorative fără scop funcțional.
+PROMPT 10 — Dashboard complet — comerciant, transportator, admin
+Efort estimat: 5-6 zile
+Construiește în frontend/ (Next.js 14, TailwindCSS, Leaflet.js) folosind exact ghidul de stil de mai sus:
+1. Autentificare prin Supabase Auth (client JS @supabase/supabase-js).
+2. Dashboard comerciant: formular comandă (adresă pe hartă Leaflet), listă comenzi cu status, vizualizare cluster, panou chat copilot.
+3. Dashboard transportator: upload documente, status verificare, listă contracte cu acceptare, hartă cu ruta curentă, buton confirmare livrare (navigator.geolocation pentru GPS).
+4. Panou admin: documente în așteptare, clustere și rute active.
+Toate cererile către Supabase din frontend folosesc anon key + token-ul utilizatorului logat — niciodată service_role key în cod client.
+✔ Verificare — Etapa 10
+Parcurg fluxul complet ca fiecare rol, de la login la acțiunea finală, fără eroare.
+Verific vizual fiecare ecran față de ghidul de stil — fundal alb, accent albastru consecvent.
+Confirm că service_role key nu apare nicăieri în codul frontend (doar anon key).
+Etapa 11 — Supabase Realtime — tracking live
+PROMPT 11 — Actualizări live pe hartă
+Efort estimat: 0.5-1 zi
+Din Supabase Dashboard → Database → Replication, activez replicarea în timp real pe tabelele vehicles și deliveries.
+În frontend, folosesc clientul Supabase JS (supabase.channel(...).on(&apos;postgres_changes&apos;, ...)) pentru a mă abona la schimbări pe aceste tabele și a actualiza harta Leaflet fără reîncărcare.
+Pentru demo, scriu un script separat care simulează mișcarea vehiculelor de-a lungul waypoints_json la interval regulat.
+✔ Verificare — Etapa 11
+Deschid dashboard-ul în două tab-uri, cu conturi din firme diferite — actualizarea apare doar unde am permisiune (RLS + Realtime combinate).
+Simulez mișcare vehicul — harta se actualizează live, fără refresh.
+Etapa 12 — Scenariul Moldova și cifrele de impact
+PROMPT 12 — Rulare scenariu complet + raport
+Efort estimat: 2-3 zile
+Scrie backend/scripts/run_scenario.py care rulează secvențial: creare comenzi din seed, clustering, optimizare rute, selecție transportatori, generare/acceptare contracte, simulare livrări.
+La final, calculează și afișează: număr curse (grupate vs individuale), grad mediu de ocupare, km parcurși în gol estimați, cost mediu de transport per magazin (tarif MDL/km documentat ca ipoteză), emisii CO2 estimate — comparat „fără sistem” vs „cu sistem”.
+Salvează rezultatele în CSV/JSON și generează grafice (matplotlib).
+✔ Verificare — Etapa 12
+Rulez scriptul de la zero (date resetate) — funcționează fără intervenție manuală.
+Modific intenționat un parametru de intrare (ex. dublez comenzile) — cifrele de output se schimbă coerent, confirmând că sunt calculate real.
+Etapa 13 — Securitate finală și calitate cod
+PROMPT 13 — Audit general înainte de finalizare
+Efort estimat: 3-5 zile
+Parcurg manual întreg fluxul, pentru fiecare rol, notând orice comportament neașteptat.
+Cer AI-ului să scrie teste automate (pytest) pentru fluxurile principale: creare comandă, clustering, optimizare rută, aprobare document, contract, confirmare livrare.
+Caut (grep recursiv) orice cheie API sau parolă scrisă direct în cod — trebuie zero rezultate.
+Verific fiecare endpoint: validare input, verificare permisiune, gestionare erori fără expunere de detalii interne.
+✔ Verificare — Etapa 13
+Toate testele automate trec.
+Zero secrete hardcodate în repository.
+Fiecare endpoint respectă cele trei criterii de securitate.
+Etapa 14 — Verificare finală completă (0% → 100%)
+PROMPT 14 — Scor final față de cele 6 obiective oficiale
+Efort estimat: 1-2 zile
+Verific, unul câte unul, cele 6 obiective din propunerea oficială de proiect, cu status COMPLET / PARȚIAL / DOCUMENTAT-CA-LIMITARE și justificare de o linie:
+1. Analiza problemelor IMM și soluțiilor AI existente — verificată în memoriu, nu doar în cod.
+2. Cadrul legal (statut IP/SRL, licențiere, protecția datelor) — inclusiv limitarea „acceptare digitală” vs semnătură calificată.
+3. Cerințe funcționale (grupare, realocare, verificare transportatori) — față de Etapele 5, 6, 7.
+4. Arhitectura tehnică (bază spațială + ML + optimizare + agent conversațional) — toate rulează integrat.
+5. Dezvoltarea platformei (motor grupare/realocare, rutare, verificare identitate, confirmare GPS) — față de Etapele 5-9, 11.
+6. Testare Moldova, evaluare impact, memoriu — față de Etapa 12.
+Calculez scorul final ca medie a verificărilor din Etapele 0-13, cu Etapa 1 (RLS) și Etapa 13 (securitate) ponderate dublu.
+Ultimul cuvânt
+Un scor onest, cu limitări documentate clar, e mai solid decât un „100% peste tot” care nu rezistă la o întrebare directă la susținere.

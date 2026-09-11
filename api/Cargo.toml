@@ -1,0 +1,62 @@
+[package]
+name = "optifleet-api"
+version = "1.0.0"
+edition = "2021"
+authors = ["OptiFleet Team"]
+description = "OptiFleet B2B — High-performance API (1M+ concurrent users)"
+
+[dependencies]
+# ─── Web Framework ──────────────────────────────────────────────────────────
+axum            = { version = "0.7", features = ["ws", "multipart", "macros"] }
+tokio           = { version = "1",   features = ["full"] }
+tower           = "0.4"
+tower-http      = { version = "0.5", features = ["cors", "trace", "compression-gzip", "limit"] }
+
+# ─── Serialization ──────────────────────────────────────────────────────────
+serde           = { version = "1", features = ["derive"] }
+serde_json      = "1"
+
+# ─── HTTP Client (pentru Supabase REST și ML Service) ───────────────────────
+reqwest         = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# ─── Redis (rate limiting + pub/sub GPS) ────────────────────────────────────
+fred            = { version = "9" }   # Async Redis client — Tokio runtime inclus implicit
+
+# ─── JWT Auth ───────────────────────────────────────────────────────────────
+jsonwebtoken    = "9"
+
+# ─── Config ─────────────────────────────────────────────────────────────────
+dotenvy         = "0.15"
+
+# ─── Logging & Tracing ──────────────────────────────────────────────────────
+tracing                = "0.1"
+tracing-subscriber     = { version = "0.3", features = ["env-filter", "json"] }
+
+# ─── Validation ─────────────────────────────────────────────────────────────
+validator       = { version = "0.18", features = ["derive"] }
+
+# ─── UUID ───────────────────────────────────────────────────────────────────
+uuid            = { version = "1", features = ["v4", "serde"] }
+
+# ─── DateTime ───────────────────────────────────────────────────────────────
+chrono          = { version = "0.4", features = ["serde"] }
+
+# ─── Error Handling ─────────────────────────────────────────────────────────
+thiserror       = "1"
+anyhow          = "1"
+
+# ─── Async traits ───────────────────────────────────────────────────────────
+async-trait     = "0.1"
+
+# ─── WebSocket ──────────────────────────────────────────────────────────────
+futures         = "0.3"
+
+[profile.release]
+opt-level    = 3
+lto          = true      # Link-Time Optimization → binare mai mici, mai rapide
+codegen-units = 1        # Un singur cod unit → mai bune optimizări
+strip        = true      # Strip debug symbols → binare mai mici
+
+[profile.dev]
+opt-level = 0
+debug     = true

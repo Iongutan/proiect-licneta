@@ -1,0 +1,156 @@
+# ═══════════════════════════════════════════════════════════════════
+# OptiFleet B2B — Docker Compose
+# Pornire dezvoltare: docker compose up -d
+# Scalare API Rust: docker compose up --scale api=4
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────
+  # OSRM — Open Source Routing Machine (rutare Moldova)
+  # Setup ÎNAINTE de prima pornire: ./osrm/setup.sh
+  # ─────────────────────────────────────────────────────────────────
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: optifleet-osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm/data:/data
+    command: >
+      osrm-routed
+      --algorithm mld
+      --max-table-size 10000
+      /data/moldova-latest.osrm
+    restart: unless-stopped
+    networks:
+      - optifleet-internal
+
+  # ─────────────────────────────────────────────────────────────────
+  # Redis — Cache + Pub/Sub GPS real-time + Rate limiting
+  # ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: optifleet-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - optifleet-internal
+
+  # ─────────────────────────────────────────────────────────────────
+  # Python ML Service — DBSCAN, CVRP, Qwen3, Claude
+  # Expus INTERN — nu accesat direct de utilizatori
+  # ─────────────────────────────────────────────────────────────────
+  ml_service:
+    build:
+      context: ./ml_service
+      dockerfile: Dockerfile
+    container_name: optifleet-ml
+    ports:
+      - "8001:8001"   # Intern — nu expune la internet!
+    env_file:
+      - ./ml_service/.env
+    environment:
+      OSRM_BASE_URL: http://osrm:5000
+      REDIS_URL: redis://redis:6379
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./ml_service:/app   # Hot reload în development
+    depends_on:
+      - osrm
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - optifleet-internal
+    # Rezervă GPU dacă disponibil (pentru Qwen3)
+    deploy:
+      resources:
+        limits:
+          memory: 8G      # Suficient pentru Qwen3:14b 4-bit
+        reservations:
+          memory: 4G
+
+  # ─────────────────────────────────────────────────────────────────
+  # Rust API — Axum server (1M+ concurrent)
+  # Scalabil orizontal: docker compose up --scale api=N
+  # ─────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: optifleet-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./api/.env
+    environment:
+      ML_SERVICE_URL: http://ml_service:8001
+      REDIS_URL: redis://redis:6379
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+      - ml_service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - optifleet-internal
+      - optifleet-external
+
+  # ─────────────────────────────────────────────────────────────────
+  # Nginx — Load Balancer + Reverse Proxy
+  # Distribuie traficul între instanțele Rust API
+  # ─────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: optifleet-nginx
+    ports:
+      - "80:80"
+      - "443:443"   # Configurează SSL cert în producție
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - optifleet-external
+
+# ─── Rețele ─────────────────────────────────────────────────────────
+networks:
+  optifleet-internal:
+    driver: bridge
+    internal: true      # Serviciile interne nu au acces la internet direct
+  optifleet-external:
+    driver: bridge
+
+# ─── Volumes ────────────────────────────────────────────────────────
+volumes:
+  redis_data:
+    driver: local

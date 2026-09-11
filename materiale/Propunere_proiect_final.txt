@@ -1,0 +1,21 @@
+﻿PROPUNERE DE PROIECT
+comisiei de aprobare a tematicilor proiectelor tezelor de licență
+anul universitar 2026-2027
+Departamentul: Ingineria Software
+Programul de studii: Tehnologia informației
+Nume, prenume student: Ion Guțan
+Grupa academică: TI-233
+Nume, prenume coordonator: Cojocaru Svetlana
+Tema:
+Platforma B2B de gestionare a comenzilor și alocare a transportului pentru întreprinderile mici și mijlocii.
+Scopul:
+Reducerea costurilor de transport și a ineficiențelor logistice pentru comercianții mici și mijlocii, prin consolidarea automată a comenzilor de volum redus și realocarea inteligentă a vehiculelor disponibile, astfel încât resursele de transport să fie folosite la capacitate maximă, iar rutele să fie optimizate automat, fără intervenție manuală.
+Obiective:
+a analiza problemele actuale ale IMM-urilor din transport (comenzi fragmentate, curse cu încărcătură parțială, lipsa planificării predictive) și soluțiile existente de optimizare logistică asistate de AI
+a analiza cadrul legal aplicabil (statut IP/SRL, licențiere transportatori) și cerințele legii privind protecția datelor cu caracter personal, pentru a stabili condițiile de conformitate ale platformei
+a stabili cerințele funcționale ale platformei: gruparea automată a comenzilor, realocarea dinamică a flotei și un mecanism de verificare a transportatorilor
+a proiecta arhitectura tehnică a sistemului, bazată pe o bază de date spațială (PostgreSQL/PostGIS) și module de învățare automată, optimizare combinatorică și agent conversațional AI
+a dezvolta platforma: motorul de grupare și realocare a vehiculelor, optimizarea rutelor, verificarea identității transportatorilor la înregistrare și confirmarea digitală a livrării cu tracking GPS obligatoriu
+a testa platforma pe un scenariu real din Republica Moldova, a evalua impactul economic, de mediu și de siguranță obținut, și a redacta memoriul explicativ al proiectului
+_________________/ Nume Prenume coordonator
+semnătura coordonator

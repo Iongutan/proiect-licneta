@@ -1,0 +1,217 @@
+﻿OptiFleet &amp; GroupLog B2B
+Document 2 — Prompturi de verificare (0→100%), configurare Supabase și model local Qwen3
+Supliment al Documentului 1 (Documentație tehnică și prompturi de construcție)
+Universitatea Tehnică a Moldovei (UTM)
+Student: Ion Guțan — Grupa TI-233
+Cuprins
+1. Ce se schimbă față de Documentul 1
+2. Ghid de stil — minimalist alb-albastru
+3. Prompturi Supabase (schema, securitate, storage, realtime)
+4. Prompt actualizat — model local Qwen3:14b
+5. Setul de prompturi de verificare (0% → 100%)
+6. Verificarea finală end-to-end și scor de completare
+1. Ce se schimbă față de Documentul 1
+Acest document nu înlocuiește Documentul 1 — îl completează cu trei actualizări pe care le-ai cerut, plus setul de prompturi de verificare, care nu exista în primul document.
+Element
+În Documentul 1
+Actualizat aici
+Bază de date + infrastructură
+PostgreSQL + PostGIS în Docker, configurat manual
+Supabase (Postgres găzduit + Auth + Storage + Realtime + Row Level Security) — vezi Secțiunea 3
+Autentificare
+JWT custom implementat manual în FastAPI
+Supabase Auth, cu rol stocat în metadata utilizatorului
+Timp real (tracking live)
+WebSocket custom în FastAPI
+Supabase Realtime (subscribe direct pe schimbări de tabelă, mai puțin cod de întreținut)
+Model AI local
+Llama 3.1 8B / Mistral 7B prin Ollama
+Qwen3:14b prin Ollama — modelul pe care îl ai deja pe dispozitiv
+Stil interfață
+Nespecificat
+Minimalist, alb + albastru — design tokens în Secțiunea 2
+Verificare corectitudine
+Doar „criteriu de acceptare” pe scurt, per prompt
+Prompt de verificare dedicat, per modul, cu raport procentual de completare
+Notă importantă despre Supabase și scenariul B2B
+Pentru o platformă B2B unde mai multe firme (comercianți, transportatori) partajează aceeași bază de date, cea mai mare capcană nu este schema — este izolarea datelor între companii.
+Supabase rezolvă asta nativ prin Row Level Security (RLS): reguli scrise direct în Postgres care garantează, la nivel de bază de date, că o firmă nu poate citi datele altei firme — chiar dacă ar exista o eroare în codul de aplicație.
+De aceea Secțiunea 3 tratează RLS ca prompt separat, nu ca detaliu minor — e diferența dintre „funcționează la demo” și „e sigur în principiu”.
+2. Ghid de stil — minimalist, alb + albastru
+Foloseește exact acest set de reguli în orice prompt frontend (inclusiv cele din Documentul 1, Prompt 8) — copiază-l ca parte din context, ca AI să nu inventeze alt stil de la o secțiune la alta.
+Token
+Valoare
+Utilizare
+Fundal principal
+#FFFFFF (alb)
+Fundal pagină și carduri
+Fundal secundar
+#F8FAFC (aproape alb, gri foarte deschis)
+Secțiuni alternative, hover pe rânduri de tabel
+Accent principal
+#2563EB (albastru)
+Butoane primare, linkuri, stări active, iconițe cheie
+Accent hover
+#1D4ED8 (albastru mai închis)
+Stare hover/active pe butoane
+Text principal
+#0F172A (aproape negru)
+Titluri, text de bază
+Text secundar
+#64748B (gri)
+Etichete, note, text auxiliar
+Bordură/separator
+#E2E8F0 (gri foarte deschis)
+Contururi carduri, linii de separare
+Stare succes
+#16A34A (verde, folosit rar, doar pentru confirmări)
+Livrare confirmată, document aprobat
+Stare avertisment
+#D97706 (portocaliu, folosit rar)
+Document în așteptare, scor de încredere scăzut
+Tipografie
+Inter sau system-ui, sans-serif
+Un singur font în toată aplicația
+Colțuri
+Rotunjite subtil (6-8px), fără colțuri ascuțite
+Carduri, butoane, input-uri
+Umbre
+Foarte discrete sau deloc (fără shadow-uri grele/dramatice)
+Diferențiere card de fundal, nimic altceva
+Densitate
+Spațiere generoasă, aer între elemente, fără UI încărcat
+Toate paginile
+Formulare pe scurt, de pus în orice prompt frontend: „Folosește o interfață minimalistă, fundal alb, accent albastru (#2563EB), text aproape negru, fără umbre puternice, fără gradient-uri, cu spațiere generoasă — evită orice element decorativ care nu are un scop funcțional.”
+3. Prompturi Supabase (schema, securitate, storage, realtime)
+Aceste prompturi înlocuiesc Prompturile 1, 2 și 9 din Documentul 1 (schema/migrații manuale, auth JWT custom, WebSocket custom). Restul prompturilor din Documentul 1 (3, 4, 5, 6, 7, 8, 10, 11) rămân valabile ca structură — doar apelurile la baza de date se fac prin clientul Supabase în loc de SQLAlchemy brut.
+PROMPT S1 — Configurare proiect Supabase + schema + PostGIS
+Efort estimat: 1 zi
+Configurează un proiect Supabase (poate fi local, cu Supabase CLI și docker, pentru dezvoltare, sau proiect cloud gratuit) pentru OptiFleet.
+Activează extensia PostGIS din Database → Extensions.
+Scrie migrațiile SQL (în supabase/migrations/) pentru tabelele: companies, users_profile (extensie a auth.users cu company_id și role), orders, group_buy_clusters, order_cluster_link, vehicles, carrier_documents, trust_scores, contracts, deliveries, routes — cu aceleași câmpuri ca în Documentul 1, Secțiunea 4, dar folosind tipul GEOGRAPHY(Point, 4326) din PostGIS pentru coordonate.
+Generează și un script SQL de seed cu scenariul Moldova (15 magazine Bălți/Orhei/Ungheni, 2 depozite Chișinău, 3 vehicule), rulabil prin Supabase CLI.
+Criteriu de acceptare: supabase db reset aplică migrațiile și seed-ul fără erori; tabelele sunt vizibile în Supabase Studio cu date corecte.
+PROMPT S2 — Row Level Security — izolarea datelor per companie
+Efort estimat: 1-2 zile
+Scrie politici Row Level Security (RLS) în Postgres pentru toate tabelele care conțin date specifice unei companii, astfel încât:
+1. Un utilizator cu rol MERCHANT poate citi și modifica doar comenzile (orders) create de compania lui (company_id = auth.uid() mapat prin users_profile).
+2. Un utilizator cu rol CARRIER poate citi doar rutele, contractele și livrările care îi sunt alocate lui, și poate modifica doar propriile vehicule și documente.
+3. Un utilizator cu rol ADMIN poate citi tot, dar modificările sensibile (aprobare documente) sunt restricționate la acest rol.
+4. group_buy_clusters și routes sunt vizibile doar companiilor implicate în acel cluster (verificare prin order_cluster_link).
+Activează RLS pe fiecare tabelă (ALTER TABLE ... ENABLE ROW LEVEL SECURITY) și scrie câte o politică CREATE POLICY pentru SELECT, INSERT, UPDATE, separat, nu una singură generică — fiecare operație trebuie verificată explicit.
+Scrie și un set de teste (folosind Supabase CLI sau pgTAP) care încearcă activ să acceseze date ale altei companii și confirmă că cererea e respinsă.
+Criteriu de acceptare: logat ca utilizator din compania A, o cerere pentru comenzile companiei B returnează listă vidă sau eroare de permisiune, nu date reale.
+PROMPT S3 — Supabase Auth cu roluri custom
+Efort estimat: 0.5-1 zi
+Configurează Supabase Auth pentru înregistrare/autentificare prin email+parolă. La înregistrare, creează automat (printr-un trigger Postgres pe auth.users, sau un endpoint backend imediat după signup) o înregistrare în users_profile cu company_id și role (MERCHANT/CARRIER/ADMIN), pe baza datelor trimise la înregistrare.
+În backend FastAPI, înlocuiește verificarea JWT custom din Documentul 1 Prompt 2 cu verificarea token-ului Supabase (folosind supabase-py sau verificare directă a JWT-ului emis de Supabase, cu secretul de proiect).
+Criteriu de acceptare: un utilizator nou se înregistrează prin Supabase Auth, primește automat un profil cu rolul corect, iar backend-ul îi recunoaște rolul din token la fiecare cerere.
+PROMPT S4 — Supabase Storage pentru documentele transportatorilor
+Efort estimat: 0.5-1 zi
+Configurează un bucket Supabase Storage numit carrier-documents, privat (nu public), cu politici de acces astfel încât un transportator poate încărca doar în propriul folder (carrier-documents/{carrier_id}/...), iar un admin poate citi toate fișierele.
+Modifică endpoint-ul de upload documente din Documentul 1 Prompt 5 să folosească Supabase Storage în loc de stocare locală de fișiere, salvând în carrier_documents.file_url calea din bucket (nu un URL public direct).
+Criteriu de acceptare: un transportator încarcă un document, fișierul apare în bucket sub folderul lui, și un alt transportator nu poate accesa acel fișier prin URL direct.
+PROMPT S5 — Supabase Realtime — tracking live fără WebSocket custom
+Efort estimat: 0.5-1 zi
+Înlocuiește implementarea WebSocket custom din Documentul 1 Prompt 9 cu Supabase Realtime: activează replicarea în timp real pe tabelele vehicles (pentru current_location) și deliveries (pentru status confirmări).
+În frontend, folosește clientul Supabase JS (supabase.channel(...).on(&apos;postgres_changes&apos;, ...)) pentru a te abona direct la schimbări pe aceste tabele și a actualiza harta Leaflet fără server WebSocket propriu.
+Criteriu de acceptare: o schimbare de current_location într-un vehicul (simulată de scriptul din Documentul 1 Prompt 9) apare live pe hartă, în toate tab-urile de browser deschise, fără reîncărcare de pagină și fără cod de server dedicat pentru WebSocket.
+4. Prompt actualizat — model local Qwen3:14b
+Acest prompt înlocuiește Documentul 1, Prompt 6 (care propunea Llama 3.1 8B / Mistral 7B). Qwen3:14b, fiind un model mai mare, e de așteptat să aibă acuratețe mai bună la extragere structurată — dar cere mai multă memorie/VRAM; menționează asta ca decizie documentată în teză (calitate mai mare vs. cost hardware mai mare).
+PROMPT Q1 — Pipeline OCR + extragere structurată cu Qwen3:14b (Ollama)
+Efort estimat: 3-4 zile
+Implementează în backend/app/services/document_ai.py un pipeline de procesare a documentelor folosind Qwen3:14b, rulat local prin Ollama (modelul e deja descărcat pe dispozitiv — confirmă cu ollama list înainte de a scrie codul).
+1. OCR cu docTR sau PaddleOCR pe documentul încărcat (PDF/imagine), pentru a extrage textul brut.
+2. Trimite textul extras către Qwen3:14b prin API-ul local Ollama (http://localhost:11434/api/generate sau clientul Python ollama), cu un system prompt care specifică STRICT: „Răspunde EXCLUSIV cu JSON valid, fără text explicativ, fără markdown, fără backticks.” Include în prompt schema exactă a câmpurilor cerute (ex: pentru facturi — volum_m3, greutate_kg, cod_produs, cantitate; pentru documente transportator — tip_document, numar_licenta, data_expirare).
+3. Parsează răspunsul cu Pydantic; dacă JSON-ul nu e valid, reîncearcă o singură dată cu un prompt și mai restrictiv, specificând exact eroarea de parsare întâlnită. Dacă tot eșuează, marchează documentul needs_manual_review = true.
+4. Setează parametrii modelului pentru consistență: temperature scăzută (0.1-0.2), pentru că sarcina e extragere factuală, nu generare creativă.
+5. Salvează în extracted_data (JSONB) rezultatul, cu un câmp confidence_flag.
+Scrie scriptul de evaluare backend/scripts/eval_ocr.py care rulează pipeline-ul pe 8-10 documente de test variate (facturi clare, facturi cu scris de mână, documente parțial ilizibile) și raportează procentul de câmpuri extrase corect pe fiecare categorie — acest tabel de rezultate e material direct pentru capitolul de evaluare al tezei, inclusiv observația onestă despre unde modelul local greșește mai des.
+Criteriu de acceptare: pe documentele de test clare, cel puțin câmpurile principale sunt extrase corect; pe documentele dificile, sistemul marchează corect needs_manual_review în loc să inventeze valori.
+5. Setul de prompturi de verificare (0% → 100%)
+Aici e diferența cheie față de Documentul 1: fiecare prompt de mai jos NU construiește cod nou — verifică activ, cu instrumentul AI, dacă modulul deja construit funcționează corect, complet și în siguranță. Rulează promptul de verificare corespunzător imediat după fiecare prompt de construcție, nu la final.
+Cum funcționează un prompt de verificare
+Fiecare prompt de verificare cere AI-ului trei lucruri, în ordine: (1) să scrie și să ruleze teste automate specifice modulului, (2) să verifice activ cazurile de eroare și de margine — nu doar drumul „fericit”, (3) să producă un raport clar: procent de criterii îndeplinite, ce anume lipsește sau e fragil.
+Raportul procentual nu e decorativ — îl copiezi în jurnalul de dezvoltare. La final, Secțiunea 6 îți dă formula de agregare a tuturor procentelor într-un singur scor de completare a produsului.
+PROMPT V0 — Verificare — infrastructură și setup
+Efort estimat: 0.5 zi
+Verifică instalarea completă a proiectului de la zero: șterge containerele/proiectul Supabase local, rulează din nou toți pașii de instalare din README, și confirmă că fiecare serviciu (backend, frontend, Supabase local, Ollama cu Qwen3) pornește fără erori și fără pași manuali nedocumentați.
+Verifică explicit: variabilele de mediu din .env.example sunt complete (nimic nu e hardcodat în altă parte); Swagger (/docs) e accesibil; Supabase Studio e accesibil; ollama list arată Qwen3:14b disponibil.
+Raportează procentual: din totalul pașilor de instalare din README, câți funcționează exact cum sunt descriși, fără improvizație.
+PROMPT V1 — Verificare — schema bazei de date (Supabase)
+Efort estimat: 0.5-1 zi
+Verifică schema Supabase față de cerințele din Documentul 1 Secțiunea 4 și Prompt S1: toate tabelele existe, cu tipurile de date corecte (GEOGRAPHY pentru coordonate, enum-uri pentru status), toate relațiile FK sunt definite cu ON DELETE comportament explicit (nu implicit), și toate câmpurile obligatorii au constrângeri NOT NULL corecte.
+Rulează seed-ul de două ori consecutiv și verifică dacă produce erori de duplicate sau date inconsistente (dacă da, scriptul de seed nu e idempotent — repară).
+Scrie interogări SQL de test care verifică integritatea referențială (ex: nicio comandă nu are company_id inexistent).
+Raportează procentual: din câmpurile listate în Secțiunea 4 a Documentului 1, câte sunt implementate exact cu tipul și constrângerile specificate.
+PROMPT V2 — Verificare — Row Level Security și autentificare
+Efort estimat: 1 zi
+Aceasta e cea mai importantă verificare de securitate din întregul proiect — tratează-o serios.
+Scrie un set de teste automate care, folosind conturi de test din companii diferite, încearcă explicit: (a) să citească comenzile altei companii, (b) să modifice un document al altui transportator, (c) să acceseze fișiere din Storage ale altui utilizator, (d) să apeleze un endpoint de admin fiind logat ca utilizator normal.
+Pentru fiecare încercare, testul trebuie să confirme respingerea (403/401 sau listă vidă), nu succesul. Dacă vreo încercare reușește, aceasta e o breșă de securitate reală și trebuie corectată înainte de a continua la orice alt modul.
+Verifică și cazul limită: un utilizator ADMIN poate face exact operațiile permise lui (aprobare documente), nu mai mult, nu mai puțin.
+Raportează procentual: din toate combinațiile rol × operație testate, câte respectă exact comportamentul intenționat. Sub 100% aici înseamnă stop — nu continui la următorul modul până nu e 100%.
+PROMPT V3 — Verificare — modulul de Clustering
+Efort estimat: 0.5-1 zi
+Rulează clustering-ul (Documentul 1 Prompt 3) pe scenariul Moldova și verifică manual, pe hartă, dacă grupurile formate au sens geografic real (magazinele din același oraș grupate, cele din orașe diferite separate).
+Testează cazuri de margine: o singură comandă activă (nu trebuie să crape, trebuie să rămână outlier), comenzi cu ferestre orare incompatibile în aceeași zonă geografică (nu trebuie grupate), comenzi exact la limita parametrului eps.
+Rulează clustering-ul de mai multe ori pe același set de date și confirmă că rezultatul e determinist (același input → același output), nu aleator.
+Raportează procentual: din cazurile de margine testate, câte se comportă corect, plus o listă a valorilor eps/min_samples testate și motivul alegerii finale.
+PROMPT V4 — Verificare — modulul de Optimizare a rutelor
+Efort estimat: 0.5-1 zi
+Verifică pentru fiecare rută generată (Documentul 1 Prompt 4): suma volumelor și greutăților comenzilor din rută nu depășește capacitatea vehiculului (verificare explicită, nu presupusă), fiecare oprire respectă fereastra ei de timp, iar distanța totală calculată e mai mică decât suma distanțelor individuale necoordonate ale acelorași comenzi.
+Testează un caz de eroare intenționat: un cluster cu volum total mai mare decât capacitatea oricărui vehicul disponibil — sistemul trebuie să răspundă cu o eroare clară, nu să genereze o rută invalidă sau să crape.
+Raportează procentual: din constrângerile listate (capacitate, fereastră de timp, determinism), câte sunt respectate în toate testele rulate.
+PROMPT V5 — Verificare — Verificare transportatori, scor de încredere, contracte
+Efort estimat: 1 zi
+Verifică fluxul complet: document încărcat → aprobat de admin → transportator devine eligibil pentru selecție → contract generat cu hash corect → acceptat digital → livrare confirmată → scor de încredere recalculat corect conform formulei documentate.
+Testează cazuri de eroare: un transportator cu documente respinse nu apare niciodată în lista de transportatori disponibili; un contract nu poate fi acceptat de altcineva decât transportatorul căruia îi e adresat; hash-ul salvat corespunde exact conținutului PDF-ului generat (recalculează și compară).
+Verifică recalcularea scorului: simulează 5 livrări (3 la timp, 2 întârziate) și confirmă manual că scorul rezultat corespunde formulei din Documentul 1 Secțiunea 5.3, nu unei aproximări.
+Raportează procentual: din pașii fluxului complet, câți produc exact rezultatul documentat.
+PROMPT V6 — Verificare — AI local Qwen3 (procesare documente)
+Efort estimat: 1 zi
+Rulează scriptul eval_ocr.py (Prompt Q1) pe un set de minim 10 documente de test, variate în claritate, și raportează procentul de câmpuri extrase corect pe fiecare tip de document (factură clară, factură neclară, document transportator).
+Verifică explicit comportamentul la eșec: un document ilizibil sau un JSON invalid din model trebuie să producă needs_manual_review = true, niciodată o valoare inventată salvată ca fiind corectă.
+Verifică timpul de răspuns al Qwen3:14b local pe hardware-ul tău — dacă un document durează peste un prag rezonabil (ex. 30-60 secunde), notează asta explicit ca limitare de performanță în teză, nu o ignora.
+Raportează procentual: acuratețea reală măsurată, pe categorie de document — acest număr, cu tot cu cazurile unde modelul greșește, e mai valoros pentru teză decât un procent perfect nerealist.
+PROMPT V7 — Verificare — Copilot conversațional (Claude API)
+Efort estimat: 0.5-1 zi
+Testează copilotul cu minim 10 întrebări diferite în română, acoperind toate tool-urile definite (status comandă, creare comandă, listă transportatori, detalii cluster), plus 3 întrebări intenționat în afara scopului (ex: „ce vreme e afară”, „aprobă-mi documentul” — o acțiune pe care copilotul nu are voie să o facă).
+Verifică explicit: copilotul nu inventează date când nu găsește informația cerută (trebuie să spună clar că nu găsește, nu să construiască un răspuns plauzibil dar fals); copilotul respectă permisiunile utilizatorului curent (un transportator care întreabă despre comenzile altei companii primește refuz, nu date).
+Raportează procentual: din întrebările testate, câte au primit răspuns corect și cât de bine a respectat limitele de permisiuni și scop.
+PROMPT V8 — Verificare — Dashboard frontend și stil vizual
+Efort estimat: 0.5-1 zi
+Verifică vizual fiecare ecran principal (login, dashboard comerciant, dashboard transportator, panou admin) față de ghidul de stil din Secțiunea 2: fundal alb, accent albastru consecvent, fără elemente decorative fără scop, spațiere generoasă, un singur font.
+Testează fluxul complet ca utilizator final, pe toate cele trei roluri, și notează orice loc unde interfața cere un pas neclar sau unde o acțiune nu are feedback vizual (ex: buton de submit fără indicator de încărcare).
+Raportează procentual: din ecranele principale, câte respectă exact ghidul de stil și câte au fluxul complet funcțional fără confuzie.
+PROMPT V9 — Verificare — Supabase Realtime
+Efort estimat: 0.5 zi
+Deschide dashboard-ul în două tab-uri de browser autentificate cu conturi diferite din companii diferite. Simulează mișcarea unui vehicul și confirmă că actualizarea apare live doar în tab-urile cu permisiune de a vedea acel vehicul (verificare RLS + Realtime combinate, nu doar Realtime izolat).
+Testează reconectarea: închide și repornește conexiunea de rețea a unui tab și confirmă că abonamentul Realtime se reface automat, fără a necesita reîncărcare completă de pagină.
+Raportează procentual: din scenariile testate, câte funcționează exact cum e documentat în Prompt S5.
+PROMPT V10 — Verificare — scenariul Moldova și cifrele de impact
+Efort estimat: 0.5-1 zi
+Rulează scriptul run_scenario.py (Documentul 1 Prompt 10) de la zero (bază de date resetată) și verifică manual, cifră cu cifră, dacă rezultatele raportate (număr curse, grad de ocupare, km în gol, cost, CO2) provin efectiv din calculul de cod, nu dintr-o valoare scrisă manual undeva în script.
+Modifică intenționat un parametru de intrare (ex: dublează numărul de comenzi) și confirmă că cifrele de output se schimbă coerent, nu rămân identice — asta demonstrează că raportul e calculat real, nu hardcodat.
+Raportează procentual: din indicatorii afișați, câți sunt trasabili complet până la o linie de cod care îi calculează.
+PROMPT V11 — Verificare — securitate generală și calitate cod
+Efort estimat: 1 zi
+Caută în întregul repository (grep recursiv) orice cheie API, parolă sau secret scris direct în cod, nu în variabile de mediu — trebuie să fie zero rezultate.
+Verifică fiecare endpoint din backend: are validare de input (Pydantic), verificare de permisiune pe rol, și tratare de eroare care nu expune detalii interne (stack trace) către client.
+Rulează suita completă de teste automate scrisă de-a lungul proiectului și confirmă că toate trec, nu doar cele scrise recent.
+Raportează procentual: din endpoint-urile existente, câte respectă toate cele trei criterii (validare, permisiuni, gestionare erori).
+6. Verificarea finală end-to-end și scor de completare
+PROMPT V-FINAL — Verificare completă a produsului față de cele 6 obiective oficiale
+Efort estimat: 1-2 zile
+Pe baza propunerii oficiale de proiect, verifică explicit, unul câte unul, cele 6 obiective și notează pentru fiecare un status: COMPLET, PARȚIAL sau DOCUMENTAT-CA-LIMITARE, cu justificare de o linie:
+1. Analiza problemelor IMM-urilor în transport și a soluțiilor AI existente — verifică dacă memoriul conține această analiză, nu doar codul.
+2. Analiza cadrului legal (statut IP/SRL, licențiere transportatori, protecția datelor) — verifică dacă memoriul discută explicit limitarea „acceptare digitală” vs semnătură electronică calificată.
+3. Cerințele funcționale (grupare comenzi, realocare flotă, verificare transportatori) — verifică fiecare împotriva modulelor construite și testate în V3, V4, V5.
+4. Arhitectura tehnică (bază spațială + ML + optimizare + agent conversațional) — verifică că toate cele patru componente rulează simultan într-un singur sistem integrat, nu separat.
+5. Dezvoltarea platformei (motor grupare/realocare, optimizare rute, verificare identitate, confirmare digitală cu GPS) — verifică rezultatele din V3, V4, V5, V9.
+6. Testarea pe scenariul Moldova, evaluarea impactului și memoriul explicativ — verifică rezultatele din V10 și existența capitolelor corespunzătoare în memoriu.
+Calculează un scor final de completare ca medie a procentelor raportate în V0-V11 (Secțiunea 5), ponderat astfel: modulele de securitate (V2, V11) contează dublu, pentru că o breșă acolo anulează valoarea restului.
+Generează un tabel final, gata de pus ca anexă în memoriu, cu toate cele 6 obiective, statusul lor și scorul procentual per modul.
+Ultimul pas, nu tehnic
+Scorul de completare nu trebuie să fie 100% pe fiecare linie ca proiectul să fie bun — trebuie să fie corect și onest.
+Un „PARȚIAL, documentat explicit ca limitare cunoscută” e un rezultat mai solid la susținere decât un „COMPLET” care nu rezistă la o întrebare directă.

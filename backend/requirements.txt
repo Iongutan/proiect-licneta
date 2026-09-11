@@ -1,0 +1,49 @@
+# ═══════════════════════════════════════════════════════════
+# OptiFleet B2B — Python Dependencies
+# Instalare: pip install -r requirements.txt
+# ═══════════════════════════════════════════════════════════
+
+# ─── Web Framework ──────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# ─── Validation & Settings ──────────────────────────────────
+pydantic==2.9.0
+pydantic-settings==2.6.0
+
+# ─── Database (Supabase) ────────────────────────────────────
+supabase==2.9.1
+postgrest==0.18.0
+
+# ─── AI Models ──────────────────────────────────────────────
+anthropic==0.40.0          # Claude API
+openai==1.55.0             # Ollama client (OpenAI-compatible endpoint)
+
+# ─── ML & Optimization ──────────────────────────────────────
+scikit-learn==1.5.2
+google-or-tools==9.11.4210
+xgboost==1.7.6
+numpy==1.26.4
+scipy==1.14.1
+hdbscan==0.8.38            # HDBSCAN (alternativă la DBSCAN)
+
+# ─── HTTP Client ────────────────────────────────────────────
+httpx==0.28.0
+
+# ─── Caching & Rate Limiting ────────────────────────────────
+redis==5.2.1
+slowapi==0.1.9
+
+# ─── Security & Auth ────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.12
+
+# ─── Logging ────────────────────────────────────────────────
+loguru==0.7.2
+
+# ─── Dev & Testing ──────────────────────────────────────────
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+httpx==0.28.0              # async test client

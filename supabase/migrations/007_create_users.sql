@@ -1,0 +1,34 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- OptiFleet B2B — Migration 007: Creare Utilizatori Demo
+--
+-- ATENȚIE: Rulează DUPĂ ce ai creat utilizatorii în Supabase Auth Dashboard!
+-- (Authentication → Users → "Add user")
+--
+-- Pași:
+--   1. Crează utilizatorii în Auth Dashboard cu emailurile de mai jos
+--   2. Copiază UUID-urile generate de Supabase
+--   3. Înlocuiește placeholder-ele auth_user_id_X cu UUID-urile reale
+--   4. Rulează acest script
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ─── EXEMPLU (înlocuiește UUID-urile cu cele reale din Auth) ────────────────
+--
+-- INSERT INTO public.users (id, company_id, role, full_name, is_active) VALUES
+-- (
+--     'PASTE_AUTH_UUID_HERE',                     -- UUID din Supabase Auth
+--     'ca100000-0000-0000-0000-000000000001',     -- TransMold Express carrier
+--     'CARRIER_ADMIN',
+--     'Admin TransMold',
+--     true
+-- ),
+-- (
+--     'PASTE_AUTH_UUID_HERE',
+--     '5e100000-0000-0000-0000-000000000001',     -- TechMold Electronics SME
+--     'SME_ADMIN',
+--     'Admin TechMold',
+--     true
+-- );
+
+-- ─── Verificare după inserare ────────────────────────────────────────────────
+-- SELECT u.full_name, u.role, c.name as company, c.type
+-- FROM users u JOIN companies c ON c.id = u.company_id;

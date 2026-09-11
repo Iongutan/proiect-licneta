@@ -1,0 +1,326 @@
+﻿OptiFleet &amp; GroupLog B2B
+Documentație tehnică completă și set de prompturi pentru dezvoltare asistată de AI
+Platformă B2B de gestionare a comenzilor și alocare a transportului pentru IMM-uri
+Universitatea Tehnică a Moldovei (UTM)
+Facultatea Calculatoare, Informatică și Microelectronică
+Student: Ion Guțan — Grupa TI-233
+Coordonator: Cojocaru Svetlana
+Cuprins
+1. Rezumat executiv și evaluare realistă
+2. Arhitectura generală a sistemului
+3. Stack tehnologic complet
+4. Schema bazei de date (PostgreSQL + PostGIS)
+5. Module funcționale — detaliu
+6. Ce rămâne explicit „extensie viitoare” în teză
+7. Riscuri reale de menționat la susținere
+8. Setul complet de prompturi — de la zero la produs funcțional
+9. Checklist final de validare
+(Notă: dacă deschizi documentul în Microsoft Word, poți oricând insera un cuprins automat cu numere de pagină din meniul Referințe → Cuprins.)
+1. Rezumat executiv și evaluare realistă
+Acest document este versiunea finală, restructurată realist, a proiectului OptiFleet &amp; GroupLog B2B — o platformă care consolidează automat comenzile de volum mic ale IMM-urilor, realocă vehicule disponibile și optimizează rutele de livrare. Documentul conține arhitectura tehnică completă, stack-ul de tehnologii, schema bazei de date și — cel mai important — un set complet de prompturi structurate, gata de folosit cu un instrument AI de dezvoltare (ex. Claude Code), de la inițializarea proiectului până la produsul funcțional final.
+1.1 Cât de realist este ca AI să scrie tot codul?
+Răspuns direct: în proporție mare — realist undeva la 70-85% din codul efectiv poate fi generat corect de un AI de tip Claude Code, dacă promptul e specific, cu context corect (schemă, exemple de date, criterii de acceptare) și dacă lucrezi modul cu modul, nu tot proiectul dintr-un singur prompt uriaș. Restul de 15-30% este exact partea care contează cel mai mult pentru o teză de licență: decizii de design, debugging de integrare, tuning de parametri și validare pe date reale.
+Unde AI este foarte fiabil
+Cod „standard”, bine documentat: CRUD FastAPI, autentificare JWT, componente Next.js/React, interogări PostGIS, integrare OR-Tools pentru CVRP (probleme cu soluții de referință publice).
+Scaffolding de proiect, configurare Docker, migrații de bază de date, teste unitare de bază.
+Generare de documentație, tipuri/scheme (Pydantic), validări de input.
+Unde ai nevoie de tine, nu doar de AI
+Decizii de schemă a bazei de date — AI propune, tu confirmi relațiile pentru că tu cunoști scenariul real.
+Tuning empiric al algoritmilor: parametrii DBSCAN (eps, min_samples) sau constrângerile OR-Tools trebuie testați pe datele tale, nu doar copiați dintr-un exemplu.
+Debugging de integrare: versiuni de librării incompatibile, extensii PostGIS, erori de mediu — AI ajută, dar tu rulezi și citești eroarea reală.
+Securitate: validare input, rate limiting, gestionare secrete — trebuie cerute explicit, AI le omite des dacă nu insiști.
+Deployment și configurare infrastructură — parte manuală, greu de „promptuit” complet.
+Recomandare de lucru
+Nu cere niciodată „construiește toată platforma” dintr-un singur prompt — rezultatul va fi superficial și greu de depanat.
+Folosește prompturile din Secțiunea 9, în ordine, unul câte unul. Rulează și testează fiecare bucată înainte să treci mai departe.
+Păstrează un fișier README/jurnal în care notezi ce ai cerut, ce a generat AI și ce ai corectat manual — acesta devine parte din memoriul de licență (capitolul de metodologie) și demonstrează la susținere că înțelegi ce ai construit, nu doar că ai copiat.
+1.2 Ce s-a schimbat față de propunerea inițială
+Propunerea inițială combina patru probleme de cercetare independente (clustering + prognoză, realocare + cross-docking, VRP + bin packing 3D, agent AI + OCR), fiecare suficient de grea cât să fie ea însăși o teză. Varianta din acest document păstrează toate cele 6 obiective oficiale din propunerea aprobată, dar redimensionează implementarea tehnică astfel încât fiecare piesă să fie construibilă și testabilă efectiv de o singură persoană, ajutată de AI.
+Element
+Decizie
+Motiv
+3D Bin Packing
+ELIMINAT ca funcție „exactă”; păstrat doar ca și constrângeri de volum/greutate în CVRP
+Google OR-Tools nu are suport nativ pentru 3D bin packing — confirmat tehnic.
+Cross-docking automatizat (optimizare de rețea)
+SIMPLIFICAT la o regulă: dacă nu există vehicul direct, sistemul sugerează un hub predefinit
+Optimizarea completă de rețea hub-and-spoke e, singură, o temă de cercetare separată.
+Demand forecasting (XGBoost)
+PĂSTRAT, dar etichetat explicit ca demonstrativ pe date simulate
+Fără date istorice reale, orice „% șansă” e o euristică, nu o predicție validă statistic — se spune onest în teză.
+Verificare transportatori + contracte + GPS
+PĂSTRAT integral — era deja în obiectivele oficiale 3 și 5
+Nu e adăugare de scop, e cerință inginerie software clasică, fără AI greu.
+Cele două componente AI (local + API)
+ADĂUGAT ca arhitectură formală, cu roluri separate
+Cerință explicită de-a ta; se leagă natural de obiectivul 1 (analiza soluțiilor AI existente).
+2. Arhitectura generală a sistemului
+Sistemul este organizat pe patru straturi, fiecare cu responsabilități clare, ceea ce permite dezvoltare și testare independentă modul cu modul:
+2.1 Diagrama pe straturi
+Stratul 1 — Client: dashboard web B2B (comercianți și transportatori) construit în Next.js, plus un panou de copilot conversațional.
+Stratul 2 — Interfață AI conversațională: apeluri către Claude API cu function calling, care traduce întrebări în limbaj natural în acțiuni concrete pe backend.
+Stratul 3 — Backend &amp; logică de business: API FastAPI ce expune patru module — Grupare &amp; Clustering, Rutare (OR-Tools), Verificare &amp; Contracte, Procesare documente (AI local).
+Stratul 4 — Date: PostgreSQL + PostGIS pentru date relaționale și spațiale.
+2.2 Fluxul principal de date (scenariu tipic)
+1. Un comerciant plasează o comandă → salvată în tabela orders cu poziție geografică.
+2. Modulul de Clustering rulează periodic (sau la prag de volum) și grupează comenzile compatibile spațial și temporal (DBSCAN).
+3. Modulul de Rutare (OR-Tools CVRP) calculează traseul optim pentru grupul format, respectând ferestre de timp și capacitate.
+4. Modulul de Verificare selectează transportatori validați (documente aprobate, scor de încredere) disponibili pe rută.
+5. Se generează automat un contract digital pentru transportatorul selectat; el acceptă din aplicație.
+6. La livrare, transportatorul confirmă digital cu poziție GPS și, opțional, fotografie.
+7. Comerciantul poate întreba oricând copilot-ul AI („unde e comanda mea?”) — acesta apelează funcții pe backend și răspunde în limbaj natural.
+3. Stack tehnologic complet
+Componentă
+Tehnologie
+Motivul alegerii
+Frontend
+Next.js 14, React, TailwindCSS
+Dezvoltare rapidă solo, randare pe server pentru dashboard
+Hărți interactive
+Leaflet.js + OpenStreetMap
+Gratuit, fără limite de chei API, suficient pentru clustere și rute
+Backend API
+Python, FastAPI
+I/O asincron, integrare nativă cu librăriile ML/optimizare
+Bază de date spațială
+PostgreSQL + extensia PostGIS
+Interogări geografice KNN, stocare de geometrii
+Clustering
+scikit-learn (DBSCAN)
+Matur, documentat, nu necesită număr de clustere prestabilit
+Optimizare rute
+Google OR-Tools (CVRP + Time Windows)
+Singurul modul de optimizare cu suport nativ solid pentru acest scop
+Motor de rutare reală
+OSRM (self-hosted, Docker)
+Distanțe și timpi reali pe drum, nu linie dreaptă
+AI local (documente)
+Ollama + Llama 3.1 8B / Mistral 7B (GGUF, cuantizat)
+Rulează pe hardware obișnuit, gratuit, păstrează datele locale
+OCR facturi
+docTR sau PaddleOCR
+Performanță mai bună pe layout de factură decât Tesseract clasic
+AI conversațional (copilot)
+Claude API, cu function calling
+Calitate de limbaj și robustețe la utilizare de unelte (tool use)
+Generare contracte
+python-docx / reportlab (template → PDF)
+Automatizare simplă, fără dependențe externe
+Timp real
+WebSockets native FastAPI
+Actualizări live pe hartă fără dependență suplimentară (Socket.io)
+Containerizare
+Docker + docker-compose
+Mediu reproductibil, ușor de rulat local pentru demo
+Autentificare
+JWT + roluri (comerciant / transportator / admin)
+Standard, bine suportat de FastAPI
+4. Schema bazei de date (PostgreSQL + PostGIS)
+Schema de mai jos e nucleul propus; toate coordonatele folosesc SRID 4326.
+4.1 Entități principale
+Tabelă
+Câmpuri cheie
+Note
+companies
+id, name, type (SME/Carrier/Supplier), address, location (Point)
+Firme înregistrate — comercianți, furnizori, transportatori
+users
+id, company_id, email, password_hash, role
+Cont de acces per companie, cu rol
+orders
+id, company_id, volume_m3, weight_kg, status, delivery_window_start/end, pickup_loc, dropoff_loc
+Comenzi individuale plasate de comercianți
+group_buy_clusters
+id, status, total_volume, total_weight, estimated_discount, route_geometry (LineString)
+Grupuri de comenzi formate de modulul de clustering
+vehicles
+id, carrier_id, capacity_m3, max_weight_kg, current_city, status, current_location (Point)
+Flota transportatorilor
+carrier_documents
+id, carrier_id, doc_type, file_url, status (pending/approved/rejected), extracted_data (JSON)
+Documente încărcate + date extrase de AI local
+trust_scores
+id, carrier_id, on_time_pct, rating_avg, account_age_days, score
+Scor calculat, folosit la selecția transportatorului
+contracts
+id, order_id, carrier_id, pdf_url, accepted_at, content_hash
+Contract digital generat și acceptat
+deliveries
+id, order_id, confirmed_at, gps_lat, gps_lng, proof_photo_url
+Confirmare de livrare cu poziție GPS
+routes
+id, vehicle_id, cluster_id, waypoints_json, total_distance_km, estimated_time_min, co2_saved_kg
+Rezultatul optimizării OR-Tools
+5. Module funcționale — detaliu
+5.1 Modulul A — Grupare &amp; Clustering spațial
+Colectează comenzile într-o fereastră temporală configurabilă (ex. 12-24h) și le grupează folosind DBSCAN pe coordonate GPS + compatibilitate a ferestrelor orare de livrare. Spre deosebire de K-Means, DBSCAN nu cere un număr fix de clustere și elimină automat comenzile izolate (outliers).
+Input: listă comenzi active (poziție, fereastră orară, volum)
+Output: grupuri de comenzi compatibile, cu volum și greutate agregate
+Parametri de tuning: eps (rază de vecinătate), min_samples — se calibrează empiric pe scenariul Moldova
+5.2 Modulul B — Optimizare rute (OR-Tools CVRP)
+Rezolvă secvența optimă de preluare și livrare pentru fiecare grup format, respectând ferestre de timp, capacitate volum/greutate a vehiculului și minimizând distanța totală / emisiile.
+Constrângeri: capacitate maximă (volum + greutate), ferestre de timp per opriere, punct de plecare/sosire
+Nu se implementează bin packing 3D — doar constrângeri agregate de volum și greutate, menționate explicit ca simplificare față de dispunerea fizică reală
+5.3 Modulul C — Verificare transportatori &amp; Contracte (Trust)
+Acoperă direct obiectivele 2, 3 și 5 din propunerea oficială (cadru legal, verificare transportatori, confirmare digitală a livrării).
+Onboarding: upload documente (licență transport, asigurare, CUI/buletin) → extragere automată a datelor de către AI local → aprobare manuală (admin) în MVP
+Scor de încredere: formulă simplă (nu ML) — procent livrări la timp, rating mediu, vechime cont
+Contract digital: generat automat dintr-un șablon la momentul matching-ului, acceptat prin checkbox + timestamp + hash SHA-256 al documentului (menționat explicit ca „acceptare digitală”, nu semnătură electronică calificată legal)
+Confirmare livrare: poziție GPS la momentul confirmării + fotografie opțională (proof of delivery)
+5.4 Modulul D — Cele două componente AI
+D1 — AI local (procesare documente)
+OCR pe facturi/avize scanate (docTR/PaddleOCR)
+Extragere structurată a datelor (volum, greutate, coduri produs) cu un model local mic (Llama 3.1 8B / Mistral 7B via Ollama)
+Motiv: date de firmă sensibile, cost zero per cerere, funcționează offline la demonstrație
+Limitare de menționat onest în teză: acuratețea unui model 8B local e sub un model de tip Claude/GPT — e un compromis documentat, nu o slăbiciune ascunsă
+D2 — AI conversațional (copilot client, Claude API)
+Răspunde în limbaj natural la întrebări despre comenzi, status livrare, oferte de grup
+Function calling către backend: creare comandă, verificare status, listare transportatori disponibili
+Motiv: calitate conversațională și robustețe la utilizarea de unelte net superioare unui model local mic
+6. Ce rămâne explicit „extensie viitoare” în teză
+O comisie apreciază onestitatea despre scop mult mai mult decât pretenția că totul e complet. Se recomandă o secțiune dedicată în memoriu, numită explicit „Limitări și direcții viitoare”, care să menționeze:
+Optimizare 3D reală a încărcării paleților (dispunere fizică pe axele X/Y/Z) — necesită algoritmi euristici dedicați (layer-based packing), nesusținuți nativ de OR-Tools
+Cross-docking ca optimizare de rețea completă (alegere dinamică a hub-urilor) — redusă la o regulă simplă cu hub predefinit
+Demand forecasting validat statistic — necesită volum real de date istorice, indisponibil la nivel de proiect de licență
+Semnătură electronică calificată legal pentru contracte (cadru eIDAS/legislație locală) — implementarea actuală e o „acceptare digitală” cu valoare demonstrativă, nu juridică
+7. Riscuri reale de menționat la susținere
+Risc
+Impact
+Cum se abordează
+Date de intrare simulate, nu reale
+Rezultatele (%, costuri) sunt demonstrative
+Se declară explicit metodologia de simulare în memoriu
+Model AI local cu acuratețe limitată pe OCR
+Extracție de date greșită pe facturi complexe
+Validare manuală în UI înainte de confirmare, prag de încredere afișat
+Parametrii DBSCAN/OR-Tools nepotriviți
+Grupuri/rute nerealiste
+Testare empirică iterativă pe scenariul Moldova, nu valori implicite
+Piață reală incertă pentru freight matching AI
+Relevanță economică a proiectului
+Se citează cazul Convoy (SUA, încetare activitate 2023) ca discuție de risc de piață, în capitolul de analiză
+Timp de dezvoltare solo, fără echipă
+Scope creep
+Se urmează strict ordinea prompturilor din Secțiunea 9, un modul finalizat înainte de următorul
+8. Setul complet de prompturi — de la zero la produs funcțional
+Prompturile de mai jos sunt scrise pentru a fi folosite, în ordine, cu un instrument AI de dezvoltare agentic (ex. Claude Code) care are acces la terminal și poate crea/edita fișiere direct în proiect. Fiecare prompt este autonom — include contextul necesar — dar presupune că prompturile anterioare au fost deja rulate și codul rezultat există în repository.
+Cum se folosesc
+Copiază promptul exact așa cum e, într-o sesiune nouă sau continuată a agentului AI.
+După ce AI generează codul, rulează-l și testează manual funcționalitatea de bază înainte să treci la promptul următor.
+Dacă ceva nu funcționează, nu trece mai departe — cere AI-ului să depaneze exact acea bucată, cu mesajul de eroare exact, înainte de a continua.
+Notează în README.md, pe scurt, ce ai cerut și ce ai corectat manual — devine material direct pentru capitolul de metodologie al tezei.
+PROMPT 0 — Inițializare proiect și infrastructură
+Efort estimat: 0.5-1 zi
+Creează structura inițială a unui proiect numit OptiFleet, organizat ca monorepo cu două directoare: backend/ (Python, FastAPI) și frontend/ (Next.js 14, TypeScript, TailwindCSS).
+În backend/: configurează un proiect FastAPI cu structură pe module (app/api, app/models, app/services, app/core), Poetry sau requirements.txt pentru dependențe, și un docker-compose.yml care ridică: serviciul FastAPI, un container PostgreSQL cu extensia PostGIS activată, și un container Ollama pentru modelul AI local.
+În frontend/: inițializează Next.js 14 cu App Router, TypeScript și TailwindCSS, cu o structură de bază de foldere (app/, components/, lib/).
+Adaugă un README.md la rădăcina proiectului care explică cum se pornește totul cu docker-compose up, și un fișier .env.example cu toate variabilele de mediu necesare (DATABASE_URL, OLLAMA_HOST, CLAUDE_API_KEY, JWT_SECRET).
+Criteriu de acceptare: docker-compose up pornește toate serviciile fără erori, iar http://localhost:8000/docs afișează documentația automată FastAPI (Swagger).
+PROMPT 1 — Schema bazei de date și migrații
+Efort estimat: 1-2 zile
+În backend/, folosind SQLAlchemy și Alembic pentru migrații, creează modelele de date pentru următoarele tabele, cu suport PostGIS pentru câmpurile de geometrie (folosește GeoAlchemy2):
+companies (id, name, type enum SME/CARRIER/SUPPLIER, address, location Point SRID 4326, created_at)
+users (id, company_id FK, email unic, password_hash, role enum MERCHANT/CARRIER/ADMIN, created_at)
+orders (id, company_id FK, volume_m3, weight_kg, status enum, delivery_window_start, delivery_window_end, pickup_location Point, dropoff_location Point, created_at)
+group_buy_clusters (id, status enum, total_volume, total_weight, estimated_discount, route_geometry LineString nullable, created_at)
+order_cluster_link (order_id FK, cluster_id FK) — relație many-to-many
+vehicles (id, carrier_id FK, capacity_m3, max_weight_kg, current_city, status enum, current_location Point)
+carrier_documents (id, carrier_id FK, doc_type enum, file_url, status enum PENDING/APPROVED/REJECTED, extracted_data JSONB, uploaded_at)
+trust_scores (id, carrier_id FK unic, on_time_pct, rating_avg, account_age_days, score)
+contracts (id, order_id FK, carrier_id FK, pdf_url, accepted_at nullable, content_hash)
+deliveries (id, order_id FK unic, confirmed_at, gps_lat, gps_lng, proof_photo_url nullable)
+routes (id, vehicle_id FK, cluster_id FK, waypoints_json JSONB, total_distance_km, estimated_time_min, co2_saved_kg)
+Generează migrația inițială cu Alembic și un script seed.py care populează baza de date cu scenariul de test: 15 magazine în Bălți, Orhei și Ungheni, 2 depozite în Chișinău, 3 vehicule (1 Chișinău, 1 în tranzit spre Bălți, 1 Comrat), cu coordonate GPS reale aproximative pentru aceste orașe din Republica Moldova.
+Criteriu de acceptare: alembic upgrade head rulează fără erori, iar python seed.py populează toate tabelele cu date vizibile în pgAdmin sau psql.
+PROMPT 2 — Autentificare și structură API de bază
+Efort estimat: 1 zi
+Implementează autentificare JWT în FastAPI cu trei roluri: MERCHANT, CARRIER, ADMIN. Endpoint-uri necesare: POST /auth/register, POST /auth/login, GET /auth/me. Folosește dependency injection FastAPI (Depends) pentru a proteja rute pe baza rolului.
+Creează structura de rutere CRUD de bază pentru companies, orders și vehicles, cu validare Pydantic completă (nu accepta volum sau greutate negative, nu accepta ferestre de timp cu start după end).
+Adaugă gestionare centralizată a erorilor (exception handlers) care returnează mesaje JSON consistente, nu stack trace-uri brute.
+Criteriu de acceptare: un utilizator se poate înregistra, autentifica, primește un token JWT valid, iar cu acel token poate crea o comandă (order) legată de compania sa.
+PROMPT 3 — Modulul de Clustering spațial (DBSCAN)
+Efort estimat: 2-3 zile
+Implementează în backend/app/services/clustering.py un serviciu care:
+1. Preia toate comenzile cu status PENDING dintr-o fereastră temporală configurabilă (parametru, implicit 24h).
+2. Rulează DBSCAN din scikit-learn pe coordonatele GPS ale punctelor de ridicare (pickup_location), cu distanța calculată corect pe sferă (haversine), nu euclidian direct pe lat/lng.
+3. Filtrează suplimentar clusterele astfel încât doar comenzile cu ferestre orare de livrare compatibile (suprapunere de minim X ore) rămân în același grup.
+4. Pentru fiecare cluster valid (minim 2 comenzi), creează o înregistrare group_buy_clusters cu volumul și greutatea totală agregate, și leagă comenzile prin order_cluster_link.
+5. Comenzile care rămân outliers (label -1 în DBSCAN) rămân PENDING pentru următoarea rulare.
+Expune un endpoint POST /clusters/run care declanșează manual procesul (pentru demo) și GET /clusters care listează clusterele active cu detalii.
+Adaugă parametrii eps și min_samples ca variabile configurabile (nu hardcodate), și scrie un test care rulează clustering-ul pe datele seed din scenariul Moldova — verifică manual dacă gruparea rezultată are sens geografic (magazinele din Bălți grupate separat de cele din Orhei, de exemplu) și ajustează eps empiric până rezultatul e coerent.
+Criteriu de acceptare: POST /clusters/run pe datele seed produce cel puțin 2-3 clustere geografic coerente, vizibile prin GET /clusters.
+PROMPT 4 — Modulul de Optimizare a rutelor (Google OR-Tools CVRP)
+Efort estimat: 3-4 zile
+Implementează în backend/app/services/routing.py un serviciu de optimizare a rutelor folosind Google OR-Tools (ortools.constraint_solver), pentru fiecare group_buy_cluster confirmat:
+1. Model CVRP (Capacitated Vehicle Routing Problem) cu ferestre de timp: pentru un cluster dat, cu un vehicul disponibil (din modulul de verificare, vezi Prompt 5), calculează secvența optimă de opriri (pickup la depozit, drop-off la fiecare magazin din cluster).
+2. Constrângeri: capacitate maximă volum_m3 și max_weight_kg a vehiculului nu trebuie depășite (constrângere agregată — NU implementa 3D bin packing, doar sumă de volum și greutate); fiecare oprire trebuie respectată în fereastra ei orară.
+3. Matricea de distanțe/timpi: integrează un client OSRM (rulat local prin Docker, cu date OpenStreetMap pentru Republica Moldova sau o regiune similară) pentru distanțe reale pe drum; dacă OSRM local e prea complex de configurat inițial, folosește ca fallback distanța haversine înmulțită cu un factor de corecție de 1.3, dar marchează explicit acest fallback în cod cu un TODO și menționează-l ca limitare în teză.
+4. Salvează rezultatul (waypoints_json, total_distance_km, estimated_time_min) în tabela routes, și calculează co2_saved_kg folosind un factor simplu (kg CO2 per km per tonă, valoare din literatură, citată).
+Expune endpoint POST /routes/optimize/{cluster_id} și GET /routes/{cluster_id}.
+Criteriu de acceptare: pentru un cluster din scenariul Moldova, endpoint-ul returnează o secvență de opriri validă, cu distanța totală vizibil mai mică decât suma distanțelor individuale necoordonate.
+PROMPT 5 — Modulul de Verificare transportatori, scor de încredere și contracte
+Efort estimat: 3-4 zile
+Implementează în backend/app/services/carriers.py și trust.py:
+1. Endpoint POST /carriers/{id}/documents pentru upload de documente (licență transport, asigurare, CUI) — salvează fișierul, creează o înregistrare carrier_documents cu status PENDING.
+2. Endpoint PATCH /admin/documents/{id}/review (doar rol ADMIN) pentru aprobare/respingere manuală în MVP.
+3. Serviciu de calcul al scorului de încredere (trust_scores): formulă simplă, nu machine learning — de exemplu score = 0.5*on_time_pct + 0.3*(rating_avg/5) + 0.2*min(account_age_days/180, 1). Recalculează scorul după fiecare livrare confirmată.
+4. Serviciu de generare contract: la momentul în care un transportator e selectat pentru o rută, generează automat un PDF dintr-un șablon (folosind reportlab sau python-docx + conversie la PDF), cu detaliile comenzii, transportatorului și termenii de bază. Calculează hash SHA-256 al fișierului și salvează-l în contracts.content_hash.
+5. Endpoint POST /contracts/{id}/accept — transportatorul acceptă digital; salvează accepted_at cu timestamp. Menționează explicit în comentariile codului că aceasta e o „acceptare digitală” cu valoare demonstrativă, nu o semnătură electronică calificată legal.
+6. Endpoint POST /deliveries/{order_id}/confirm — primește gps_lat, gps_lng, opțional o fotografie (proof_photo_url), creează înregistrarea deliveries și declanșează recalcularea scorului de încredere al transportatorului.
+Criteriu de acceptare: un transportator poate încărca documente, un admin le poate aproba, transportatorul apare disponibil pentru selecție, primește și acceptă un contract, iar la confirmarea livrării scorul lui de încredere se actualizează vizibil.
+PROMPT 6 — AI local — OCR și extragere structurată din documente
+Efort estimat: 3-4 zile
+Implementează în backend/app/services/document_ai.py un pipeline de procesare a documentelor (facturi, avize de însoțire) folosind exclusiv componente locale, fără API extern:
+1. Pentru fișiere PDF/imagine încărcate la carrier_documents sau la facturi de comandă, rulează OCR cu docTR (sau PaddleOCR ca alternativă) pentru a extrage textul brut.
+2. Trimite textul extras către un model local rulat prin Ollama (Llama 3.1 8B sau Mistral 7B, ambele cuantizate GGUF) cu un prompt de extragere structurată, care cere modelului să returneze STRICT JSON cu câmpurile relevante (ex: pentru facturi — volum, greutate, cod_produs, cantitate; pentru documente transportator — tip_document, numar_licenta, data_expirare).
+3. Validează JSON-ul returnat cu Pydantic; dacă parsarea eșuează, reîncearcă o dată cu un prompt mai strict, apoi marchează documentul ca „necesită validare manuală” dacă tot eșuează.
+4. Salvează rezultatul în extracted_data (JSONB) pe înregistrarea carrier_documents sau orders, cu un câmp confidence_flag (ex: „auto-extras” vs „necesită verificare”).
+5. Adaugă în UI (backend expune, frontend afișează) un ecran unde admin-ul poate vedea documentul original alături de datele extrase, cu posibilitate de corectare manuală — niciodată nu folosi datele extrase automat fără acest pas de validare vizibilă.
+Scrie și un mic script de evaluare (backend/scripts/eval_ocr.py) care rulează pipeline-ul pe 5-10 documente de test și raportează procentul de câmpuri extrase corect — acest număr concret e material direct pentru capitolul de evaluare din teză (secțiunea 1.1 din acest document explică de ce onestitatea aici contează).
+Criteriu de acceptare: încărcarea unui document PDF de test produce extracted_data populat corect pentru cel puțin câmpurile principale, vizibil prin API.
+PROMPT 7 — AI conversațional — Copilot client cu Claude API
+Efort estimat: 3-4 zile
+Implementează în backend/app/services/copilot.py un endpoint POST /copilot/chat care primește mesaje în limbaj natural de la un utilizator autentificat (comerciant sau transportator) și răspunde folosind Claude API cu function calling.
+Definește un set restrâns de „tools” (funcții) pe care modelul le poate apela, mapate direct pe endpoint-urile deja existente din backend:
+get_order_status(order_id) — returnează statusul unei comenzi
+create_order(volume_m3, weight_kg, pickup_address, dropoff_address, delivery_window) — creează o comandă nouă
+list_available_carriers(city) — listează transportatori disponibili și scorul lor de încredere
+get_cluster_info(cluster_id) — detalii despre un grup de comenzi
+Implementează bucla de conversație: trimite mesajul utilizatorului + system prompt (context despre platformă, rolul utilizatorului curent, limitări — de exemplu, copilotul nu poate aproba documente sau modifica contracte) către Claude API cu tools definite; dacă modelul cere apelarea unui tool, execută funcția reală pe backend (cu verificare de permisiuni — un transportator nu poate crea comenzi în numele altei companii), trimite rezultatul înapoi modelului, și returnează răspunsul final în limbaj natural către utilizator.
+Păstrează istoricul conversației per sesiune (în memorie sau într-un tabel conversations simplu) pentru context pe mai multe mesaje.
+Criteriu de acceptare: un utilizator poate întreba în română „unde este comanda mea #123” și primește un răspuns corect generat din datele reale ale bazei de date, nu inventat.
+PROMPT 8 — Dashboard frontend — comercianți și transportatori
+Efort estimat: 5-6 zile
+În frontend/, construiește dashboard-ul principal folosind Next.js 14, TailwindCSS și Leaflet.js pentru hărți:
+1. Pagină de autentificare (login/register) care apelează endpoint-urile din Prompt 2.
+2. Dashboard comerciant: formular de creare comandă (cu selecție adresă pe hartă Leaflet), listă de comenzi proprii cu status, vizualizare pe hartă a clusterului din care face parte comanda curentă (dacă există), și un panou de chat pentru copilot (Prompt 7).
+3. Dashboard transportator: formular de upload documente, status verificare, listă de contracte primite cu buton de acceptare, hartă cu ruta curentă (waypoints din routes), buton de confirmare livrare care capturează poziția GPS din browser (navigator.geolocation).
+4. Panou admin: listă documente în așteptare cu aprobare/respingere, vizualizare generală a clusterelor și rutelor active.
+5. Folosește actualizări în timp real (WebSocket nativ FastAPI, vezi Prompt 9) pentru starea vehiculelor pe hartă.
+Criteriu de acceptare: un utilizator se poate autentifica, crea o comandă, o poate vedea pe hartă, iar un transportator poate accepta un contract și confirma o livrare — totul din interfața web, fără a apela API-ul manual.
+PROMPT 9 — Actualizări în timp real (WebSockets)
+Efort estimat: 1-2 zile
+Adaugă un canal WebSocket în FastAPI (endpoint /ws/tracking) care difuzează, către toți clienții conectați relevanți (companie/rolul potrivit), actualizări de poziție ale vehiculelor și schimbări de status ale comenzilor/livrărilor.
+În frontend, conectează dashboard-ul la acest WebSocket pentru a actualiza automat markerele de pe hartă Leaflet fără reîncărcare de pagină, când poziția unui vehicul se schimbă sau o livrare e confirmată.
+Pentru demo, simulează mișcarea vehiculelor de-a lungul rutei calculate (waypoints_json) cu un script separat care actualizează current_location la interval regulat, ca să existe activitate vizibilă în timpul prezentării.
+Criteriu de acceptare: deschizând dashboard-ul în două tab-uri de browser, o schimbare de status într-unul se reflectă live în celălalt, fără refresh.
+PROMPT 10 — Scenariul de testare Moldova și măsurarea impactului
+Efort estimat: 2-3 zile
+Scrie un script backend/scripts/run_scenario.py care rulează secvențial întregul flux pe datele seed (15 magazine, 2 depozite, 3 vehicule): creează comenzi, rulează clustering, optimizează rute pentru fiecare cluster, selectează transportatori, generează și acceptă contracte, simulează confirmarea livrărilor.
+La final, scriptul trebuie să calculeze și să afișeze un raport comparativ: număr de curse (grupate vs individuale), grad mediu de ocupare a camioanelor, kilometri parcurși în gol estimați, cost mediu de transport per magazin (folosind un tarif simplu MDL/km, documentat ca ipoteză), și emisii CO2 estimate — comparate „fără sistem” (fiecare comandă livrată separat) versus „cu sistem” (comenzi grupate și rutate optim).
+Salvează rezultatele într-un fișier CSV/JSON și generează un grafic simplu (matplotlib) pentru fiecare indicator — acestea sunt materialul direct pentru capitolul de evaluare a impactului din memoriul de licență.
+Criteriu de acceptare: scriptul rulează de la zero (bază de date curată + seed) până la raportul final fără intervenție manuală, iar cifrele rezultate sunt trasabile (nu inventate) — fiecare provine dintr-un calcul vizibil în cod.
+PROMPT 11 — Testare finală, corectare erori și pregătire documentație
+Efort estimat: 3-5 zile
+Parcurge întreg fluxul aplicației manual, ca un utilizator final, de la înregistrare până la confirmare livrare, pentru fiecare rol (comerciant, transportator, admin). Notează orice comportament neașteptat.
+Cere AI-ului să scrie teste automate (pytest pentru backend) pentru cele mai importante fluxuri: crearea unei comenzi, rularea clustering-ului, optimizarea unei rute, aprobarea unui document, generarea și acceptarea unui contract, confirmarea unei livrări.
+Generează documentație tehnică a codului (docstrings, README per modul) care explică pe scurt ce face fiecare serviciu — util atât pentru tine cât și ca anexă tehnică a memoriului.
+Revizuiește codul generat de AI din toate prompturile anterioare cu atenție la partea de securitate: validare input pe toate endpoint-urile, verificare de permisiuni (un utilizator nu poate accesa datele altei companii), gestionare corectă a secretelor (nimic hardcodat, totul din variabile de mediu).
+Criteriu de acceptare: toate testele automate trec, fluxul complet funcționează fără erori vizibile, iar codul nu conține chei API sau parole hardcodate.
+9. Checklist final de validare (înainte de susținere/predare)
+Toate cele 6 obiective din propunerea oficială sunt vizibil acoperite de câte un modul funcțional demonstrabil
+Scenariul Moldova rulează de la zero cu un singur script și produce cifre trasabile în cod
+Secțiunea „Limitări și direcții viitoare” din memoriu menționează explicit: bin packing 3D, cross-docking complet, forecasting validat statistic, semnătură electronică calificată
+Fiecare decizie tehnică netrivială (parametri DBSCAN, formula scorului de încredere, factorul CO2) are o justificare scrisă, nu doar o valoare hardcodată
+Jurnalul de dezvoltare (ce a generat AI vs ce ai corectat manual) există și poate fi folosit ca material pentru capitolul de metodologie
+Nicio cheie API sau parolă nu apare în codul sursă sau în repository

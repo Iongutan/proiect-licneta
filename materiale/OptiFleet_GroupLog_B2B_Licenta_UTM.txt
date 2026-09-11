@@ -1,0 +1,91 @@
+﻿PROIECT DE LICENȚĂ: OptiFleet &amp; GroupLog B2B
+Platformă B2B Inteligentă de Logistica Rețelei de Aprovizionare, Group-Buying și Alocare Dinamică a Flotei prin AI pentru IMM-uri
+Universitatea Tehnică a Moldovei (UTM) | Facultatea Calculatoare, Informatică și MicroelectronicăSpecializarea: Tehnologia Informației | Anul IV
+1. Sinteza Proiectului și Viziunea de Produs
+Piața de transport și distribuție pentru Întreprinderile Mici și Mijlocii (IMM) din Republica Moldova și regiune se confruntă cu ineficiențe structurale majore care afectează competitivitatea economică:
+Comenzi fragmentate de volum mic: Micii comercianți plătesc tarif întreg pentru livrări parțiale (LTL - Less Than Truckload), având costuri logistice de până la 3 ori mai mari per unitate decât marile rețele de retail.
+Vehicule care circulă parțial goale sau fără încărcătură la retur (Deadhead Miles): Transportatorii locali suferă de o rată ridicată de spațiu neutilizat, mai ales pe rutele de întoarcere din orașele regionale (ex: Bălți, Cahul, Ungheni înapoi spre Chișinău).
+Lipsa instrumentelor de planificare predictivă și colaborativă: Comunicarea se desfășoară manual (telefon, mesagerie), fără algoritmi de consolidare spațio-temporală a comenzilor sau calcul automat de rute optime.
+Viziunea Proiectului: OptiFleet &amp; GroupLog B2B este o platformă cloud de nivel Enterprise ce combină Machine Learning (Clustering spațial &amp; Demand Forecasting), Optimizarea Combinatorie (CVRP &amp; 3D Bin Packing) și Agenți Autonomi AI (LLM / Tool Calling) pentru a transforma logistica izolată într-un sistem ecologic, inteligent și colaborativ.
+2. Arhitectura Conceptuală și Modulele AI
+Modulul 1: Group-Buying &amp; Spatial Clustering Engine
+În loc ca fiecare magazin să plaseze comenzi individuale scumpe, sistemul colectează automat cererile de aprovizionare într-o fereastră temporală configurabilă (ex: 12–24 ore) și le grupează folosind algoritmi de învățare automată neasistată.
+Algoritm de Clustering Spațial (DBSCAN / HDBSCAN): Grupează comenzile pe baza coordonatelor GPS (PostGIS) și a ferestrelor orare de livrare. Spre deosebire de K-Means, DBSCAN identifică clustere de forme arbitrare și elimină valorile izolate (outliers).
+Predictia Pragului Minim de Comandă (Volume Pricing Forecasting): Model bazat pe XGBoost/Prophet care analizează istoricul achizițiilor și trimite notificări predictive către comercianți: 'Dacă mai aștepți 6 ore, există 88% șanse ca alți 2 comercianți să se alăture, scăzând costul de transport cu 22%.'
+Modulul 2: Dynamic Fleet Relocation &amp; Cross-Docking (Marea Inovație)
+Rezolvă problema mașinilor aflate în alte orașe sau care se întorc goale din curse inter-urbane. Când o comandă de grup este constituită într-un oraș regional, sistemul caută vehicule din raza extinsă cu rute compatibile.
+Spatial KNN (K-Nearest Neighbors) cu PostGIS: Interoghează baza de date spațială pentru vehicule libere sau cu capacitate reziduală în orașe vecine.
+Analiza Costului Marginal de Redirecționare: Calculează deviația necesară de la traseu. Dacă ΔCost_Deviație &lt; Cost_Cursă_Standard, sistemul generează automat o propunere avantajoasă pentru transportator.
+Cross-Docking Automatizat: Dacă nu există un camion direct, algoritmul identifică un depozit intermediar (hub logistic) unde încărcătura este combinată eficient.
+Modulul 3: Optimizarea Rutelor și Încărcării 3D (Google OR-Tools)
+Capacitated Vehicle Routing Problem (CVRP) cu Time Windows: Rezolvă secvența optimă de preluare (pick-up) de la furnizori și distribuție (drop-off) la magazine, minimizând km parcurși și emisiile CO2.
+3D Bin Packing Problem (Optimizare Spațială în Camion): Calculează dispunerea fizică a paleților pe axe (X, Y, Z) în funcție de dimensiuni, restricții de greutate per axă și ordinea de descărcare LIFO (Last In, First Out).
+Modulul 4: Agent Autonom AI &amp; Copilot Conversațional
+LLM cu Function Calling (Tool Use): Agent AI capabil să execute comenzi de sistem, să caute rute și să trimită notificări proactive către utilizatori.
+OCR + LLM Document Parsing: Procesare automată a facturilor PDF și avizelor de însoțire a mărfii scanate, extragând automat volumul, greutatea și codurile de produs.
+3. Arhitectura Tehnică și Stack Tehnologic
+Componentă
+Tehnologie / Biblioteca
+Motivul Alegerii &amp; Rolul în Proiect
+Frontend UI
+Next.js 14, React, TailwindCSS
+Dashboard B2B performant, Server-Side Rendering
+Hărți Interactive
+Mapbox GL JS / Leaflet.js
+Vizualizarea poligoanelor de cluster și a rutelor live
+Backend API Core
+Python (FastAPI)
+I/O asincron, integrare nativă cu librării ML/AI
+Bază de Date Spațială
+PostgreSQL + PostGIS
+Stocarea coordonatelor vectoriale, interogări geografice KNN
+AI &amp; Optimizare
+Scikit-Learn, Google OR-Tools, XGBoost
+Algoritmi de clustering, VRP, Bin Packing, forecasting
+Engine Rutare Graf
+OSRM (Open Source Routing Machine)
+Calcul de matrice de distanțe rutiere reale în ms
+Real-time Engine
+Socket.io / WebSockets
+Actualizări live privind starea mașinilor pe hartă
+4. Structura Bazei de Date (PostgreSQL + PostGIS)
+Schema relațională include suport spațial (SRID 4326) pentru calcul rapid de distanțe geografice:
+Tabela companies: id, name, type (SME/Carrier/Supplier), address, location (GEOMETRY Point)
+Tabela orders: id, company_id, volume_m3, weight_kg, status, delivery_window_start/end, pickup_loc, dropoff_loc
+Tabela group_buy_clusters: id, status, total_volume, total_weight, estimated_discount, route_geometry (GEOMETRY LineString)
+Tabela vehicles: id, carrier_id, capacity_m3, max_weight_kg, current_city, status, current_location (GEOMETRY Point)
+Tabela routes: id, vehicle_id, cluster_id, waypoints_json, total_distance_km, estimated_time_min, co2_saved_kg
+5. Scenariu Real de Demonstrație și Impact Economic (Studiu de Caz Moldova)
+Pentru susținerea licenței la UTM, s-a configurat un scenariu de simulare bazat pe date geografice reale din Republica Moldova:
+Mici comercianți: 15 magazine alimentare de tip boutique localizate în Bălți, Orhei și Ungheni.
+Furnizori: 2 depozite angro principale localizate în Chișinău.
+Transportatori: 3 vehicule disponibile (1 în Chișinău, 1 în tranzit spre Bălți, 1 în Comrat).
+Indicator / Metrică
+Fără Sistem (Standard)
+Cu Sistemul OptiFleet B2B
+Îmbunătățire %
+Număr Curse Executate
+15 curse individuale
+3 curse de grupaj
+-80% curse
+Grad Mediu Ocupare Camion
+~35%
+88%
++151% eficientizare
+Km Parcurși în Gol (Deadhead)
+420 km
+65 km
+-84.5% km risipiți
+Cost Mediu Transport / Magazin
+1200 MDL
+450 MDL
+-62.5% reducere cost
+Emisii CO2 Estimate
+~380 kg CO2
+~110 kg CO2
+-71% impact mediu
+6. Plan de Implementare Etapizat (4 Luni)
+Luna 1: Design &amp; Infrastructure Setup: Proiectarea bazei de date PostGIS, configurarea API-ului FastAPI, integrarea serviciilor de hărți (Mapbox &amp; OSRM) și definirea modelelor de date.
+Luna 2: Core ML &amp; Clustering Engine: Implementarea algoritmului de clustering spațial DBSCAN, a modelului de predicție a prețurilor (XGBoost) și a modulului de Group-Buying.
+Luna 3: Optimization &amp; Fleet Relocation: Integrarea Google OR-Tools pentru VRP multi-stop, algoritmul 3D Bin Packing și logica de potrivire a vehiculelor inter-orașe (KNN + Cost marginal).
+Luna 4: AI Copilot, UI Dashboard &amp; Testing: Implementarea agentului conversațional AI (LLM / OCR), finalizarea interfeței Next.js/Tailwind, rularea simulărilor pe dataset-ul din Moldova și redactarea tezei de licență.
