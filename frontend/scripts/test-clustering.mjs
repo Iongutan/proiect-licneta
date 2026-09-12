@@ -17,6 +17,9 @@ const mockTrucks = [
   { id: "trk-06", plate: "SRC 401", currentRaion: "soroca", lat: 48.15, lon: 28.29, freePallets: 4, totalPallets: 33 },
   { id: "trk-07", plate: "CHL 501", currentRaion: "cahul", lat: 45.90, lon: 28.19, freePallets: 10, totalPallets: 33 },
   { id: "trk-08", plate: "CMR 601", currentRaion: "comrat", lat: 46.30, lon: 28.65, freePallets: 6, totalPallets: 33 },
+  { id: "trk-09", plate: "CTM 204", currentRaion: "cantemir", lat: 46.25, lon: 28.33, freePallets: 9, totalPallets: 33 },
+  { id: "trk-10", plate: "LVA 881", currentRaion: "leova", lat: 46.52, lon: 28.39, freePallets: 14, totalPallets: 33 },
+  { id: "trk-11", plate: "SLD 309", currentRaion: "soldanesti", lat: 47.84, lon: 28.69, freePallets: 11, totalPallets: 33 },
 ];
 
 console.log("=== TEST SNAPSHOT: Prompt K3 Visual Clustering ===");

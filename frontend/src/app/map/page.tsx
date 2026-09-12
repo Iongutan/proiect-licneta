@@ -36,28 +36,52 @@ const RealMoldovaMap = dynamic(() => import("@/components/map/RealMoldovaMap"), 
   ),
 });
 
-// Toate Raioanele și Municipalele din Republica Moldova
+// Toate cele 37 de Raioane, Municipii și Unități Autonome din Republica Moldova
 const ALL_DISTRICTS: DistrictInfo[] = [
-  { id: "chisinau", name: "Mun. Chișinău", type: "MUNICIPIU", lat: 47.0105, lon: 28.8638, trucksCount: 18, activeOrdersCount: 42 },
-  { id: "balti", name: "Mun. Bălți", type: "MUNICIPIU", lat: 47.763, lon: 27.929, trucksCount: 11, activeOrdersCount: 26 },
-  { id: "orhei", name: "Raionul Orhei", type: "RAION", lat: 47.3831, lon: 28.8239, trucksCount: 7, activeOrdersCount: 14 },
-  { id: "ungheni", name: "Raionul Ungheni (Vama Sculeni)", type: "RAION", lat: 47.2042, lon: 27.7981, trucksCount: 8, activeOrdersCount: 17 },
-  { id: "cahul", name: "Raionul Cahul (Vama Oancea)", type: "RAION", lat: 45.9075, lon: 28.1944, trucksCount: 6, activeOrdersCount: 12 },
-  { id: "hincesti", name: "Raionul Hîncești (Vama Leușeni)", type: "RAION", lat: 46.8283, lon: 28.5919, trucksCount: 9, activeOrdersCount: 19 },
-  { id: "soroca", name: "Raionul Soroca", type: "RAION", lat: 48.1566, lon: 28.2975, trucksCount: 5, activeOrdersCount: 9 },
-  { id: "edinet", name: "Raionul Edineț", type: "RAION", lat: 48.1681, lon: 27.305, trucksCount: 5, activeOrdersCount: 8 },
-  { id: "causeni", name: "Raionul Căușeni", type: "RAION", lat: 46.6436, lon: 29.4136, trucksCount: 4, activeOrdersCount: 7 },
-  { id: "straseni", name: "Raionul Strășeni", type: "RAION", lat: 47.1422, lon: 28.6089, trucksCount: 5, activeOrdersCount: 11 },
-  { id: "comrat", name: "UTA Găgăuzia (Comrat)", type: "AUTONOMIE", lat: 46.3006, lon: 28.6567, trucksCount: 6, activeOrdersCount: 13 },
-  { id: "falesti", name: "Raionul Fălești", type: "RAION", lat: 47.5744, lon: 27.7125, trucksCount: 3, activeOrdersCount: 5 },
-  { id: "drochia", name: "Raionul Drochia", type: "RAION", lat: 48.0347, lon: 27.8158, trucksCount: 4, activeOrdersCount: 6 },
-  { id: "ialoveni", name: "Raionul Ialoveni", type: "RAION", lat: 46.9431, lon: 28.7778, trucksCount: 7, activeOrdersCount: 15 },
-  { id: "cimislia", name: "Raionul Cimișlia", type: "RAION", lat: 46.5208, lon: 28.7842, trucksCount: 4, activeOrdersCount: 7 },
-  { id: "rezina", name: "Raionul Rezina", type: "RAION", lat: 47.7497, lon: 28.9622, trucksCount: 3, activeOrdersCount: 4 },
-  { id: "anenii_noi", name: "Raionul Anenii Noi", type: "RAION", lat: 46.8817, lon: 29.2294, trucksCount: 5, activeOrdersCount: 9 },
-  { id: "briceni", name: "Raionul Briceni (Vama Criva)", type: "RAION", lat: 48.3619, lon: 27.0853, trucksCount: 4, activeOrdersCount: 6 },
-  { id: "taraclia", name: "Raionul Taraclia", type: "RAION", lat: 45.9006, lon: 28.6689, trucksCount: 3, activeOrdersCount: 4 },
-  { id: "stefan_voda", name: "Raionul Ștefan Vodă", type: "RAION", lat: 46.5125, lon: 29.6631, trucksCount: 3, activeOrdersCount: 5 },
+  // Municipii
+  { id: "chisinau", name: "Mun. Chișinău", type: "MUNICIPIU", lat: 47.0068, lon: 28.8772, trucksCount: 18, activeOrdersCount: 42 },
+  { id: "balti", name: "Mun. Bălți", type: "MUNICIPIU", lat: 47.7767, lon: 27.9171, trucksCount: 11, activeOrdersCount: 26 },
+  { id: "bender", name: "Mun. Bender (Tighina)", type: "MUNICIPIU", lat: 46.8224, lon: 29.4527, trucksCount: 3, activeOrdersCount: 5 },
+
+  // Regiunea Nord
+  { id: "briceni", name: "Raionul Briceni (Vama Criva)", type: "RAION", lat: 48.2782, lon: 26.9475, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "donduseni", name: "Raionul Dondușeni", type: "RAION", lat: 48.2167, lon: 27.7205, trucksCount: 3, activeOrdersCount: 5 },
+  { id: "drochia", name: "Raionul Drochia", type: "RAION", lat: 48.0304, lon: 27.8572, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "edinet", name: "Raionul Edineț", type: "RAION", lat: 48.1447, lon: 27.2823, trucksCount: 5, activeOrdersCount: 8 },
+  { id: "falesti", name: "Raionul Fălești", type: "RAION", lat: 47.5747, lon: 27.7022, trucksCount: 3, activeOrdersCount: 5 },
+  { id: "floresti", name: "Raionul Florești", type: "RAION", lat: 47.8808, lon: 28.3904, trucksCount: 4, activeOrdersCount: 7 },
+  { id: "glodeni", name: "Raionul Glodeni", type: "RAION", lat: 47.7272, lon: 27.5273, trucksCount: 3, activeOrdersCount: 4 },
+  { id: "ocnita", name: "Raionul Ocnița (Vama Otaci)", type: "RAION", lat: 48.3533, lon: 27.5482, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "riscani", name: "Raionul Rîșcani", type: "RAION", lat: 47.924, lon: 27.5358, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "singerei", name: "Raionul Sîngerei", type: "RAION", lat: 47.6723, lon: 28.1466, trucksCount: 5, activeOrdersCount: 8 },
+  { id: "soldanesti", name: "Raionul Șoldănești", type: "RAION", lat: 47.8449, lon: 28.6894, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "soroca", name: "Raionul Soroca", type: "RAION", lat: 48.1645, lon: 28.226, trucksCount: 5, activeOrdersCount: 9 },
+
+  // Regiunea Centru
+  { id: "anenii_noi", name: "Raionul Anenii Noi", type: "RAION", lat: 46.9235, lon: 29.2195, trucksCount: 5, activeOrdersCount: 9 },
+  { id: "calarasi", name: "Raionul Călărași", type: "RAION", lat: 47.3028, lon: 28.3056, trucksCount: 4, activeOrdersCount: 7 },
+  { id: "criuleni", name: "Raionul Criuleni", type: "RAION", lat: 47.1483, lon: 29.0216, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "dubasari", name: "Raionul Dubăsari (Cocieri)", type: "RAION", lat: 47.245, lon: 29.1771, trucksCount: 2, activeOrdersCount: 3 },
+  { id: "hincesti", name: "Raionul Hîncești (Vama Leușeni)", type: "RAION", lat: 46.8471, lon: 28.4127, trucksCount: 9, activeOrdersCount: 19 },
+  { id: "ialoveni", name: "Raionul Ialoveni", type: "RAION", lat: 46.866, lon: 28.7836, trucksCount: 7, activeOrdersCount: 15 },
+  { id: "nisporeni", name: "Raionul Nisporeni", type: "RAION", lat: 47.0827, lon: 28.1368, trucksCount: 3, activeOrdersCount: 5 },
+  { id: "orhei", name: "Raionul Orhei", type: "RAION", lat: 47.4002, lon: 28.8073, trucksCount: 7, activeOrdersCount: 14 },
+  { id: "rezina", name: "Raionul Rezina", type: "RAION", lat: 47.7046, lon: 28.8109, trucksCount: 3, activeOrdersCount: 4 },
+  { id: "straseni", name: "Raionul Strășeni", type: "RAION", lat: 47.1617, lon: 28.5089, trucksCount: 5, activeOrdersCount: 11 },
+  { id: "telenesti", name: "Raionul Telenești", type: "RAION", lat: 47.5664, lon: 28.4234, trucksCount: 4, activeOrdersCount: 6 },
+  { id: "ungheni", name: "Raionul Ungheni (Vama Sculeni)", type: "RAION", lat: 47.2569, lon: 27.8846, trucksCount: 8, activeOrdersCount: 17 },
+
+  // Regiunea Sud & Autonomii
+  { id: "basarabeasca", name: "Raionul Basarabeasca", type: "RAION", lat: 46.3985, lon: 28.8767, trucksCount: 3, activeOrdersCount: 4 },
+  { id: "cahul", name: "Raionul Cahul (Vama Oancea)", type: "RAION", lat: 45.8106, lon: 28.3256, trucksCount: 6, activeOrdersCount: 12 },
+  { id: "cantemir", name: "Raionul Cantemir", type: "RAION", lat: 46.2498, lon: 28.3328, trucksCount: 4, activeOrdersCount: 8 },
+  { id: "causeni", name: "Raionul Căușeni", type: "RAION", lat: 46.6053, lon: 29.3089, trucksCount: 4, activeOrdersCount: 7 },
+  { id: "cimislia", name: "Raionul Cimișlia", type: "RAION", lat: 46.5921, lon: 28.8063, trucksCount: 4, activeOrdersCount: 7 },
+  { id: "leova", name: "Raionul Leova", type: "RAION", lat: 46.5217, lon: 28.3947, trucksCount: 4, activeOrdersCount: 7 },
+  { id: "stefan_voda", name: "Raionul Ștefan Vodă", type: "RAION", lat: 46.5156, lon: 29.7796, trucksCount: 3, activeOrdersCount: 5 },
+  { id: "taraclia", name: "Raionul Taraclia", type: "RAION", lat: 45.9788, lon: 28.7267, trucksCount: 3, activeOrdersCount: 4 },
+  { id: "comrat", name: "UTA Găgăuzia (Comrat)", type: "AUTONOMIE", lat: 45.9782, lon: 28.6473, trucksCount: 6, activeOrdersCount: 13 },
+  { id: "transnistria", name: "Stânga Nistrului (Tiraspol/Rîbnița)", type: "AUTONOMIE", lat: 47.3644, lon: 29.2357, trucksCount: 4, activeOrdersCount: 6 },
 ];
 
 // Flota Disponibilă cu Telemetrie GPS Reală
@@ -198,6 +222,99 @@ const INITIAL_TRUCKS: AvailableTruck[] = [
     fuelLevelPercent: 82,
     lat: 47.01,
     lon: 28.87,
+    layoutOrientation: "2_WIDE",
+  },
+  {
+    id: "trk-07",
+    plate: "CTM 204",
+    model: "Mercedes-Benz Actros 1845 (Prelată 13.6m)",
+    vehicleType: "SEMI_CURTAINSIDE_33",
+    carrierName: "Cantemir AgroTrans SRL",
+    carrierPhone: "+373 69 445 112",
+    driverName: "Alexandru Vlas",
+    pricePerKm: 18.0,
+    hasConditioner: false,
+    totalPallets: 33,
+    freePallets: 9,
+    isVerifiedANTA: true,
+    gpsTrackerId: "Teltonika FMB920",
+    currentRaion: "cantemir",
+    destinationScope: "INTERN",
+    availableNow: true,
+    speedKmH: 68,
+    fuelLevelPercent: 79,
+    lat: 46.25,
+    lon: 28.33,
+    layoutOrientation: "2_WIDE",
+  },
+  {
+    id: "trk-08",
+    plate: "LVA 881",
+    model: "DAF XF 480 (Prelată 13.6m)",
+    vehicleType: "SEMI_CURTAINSIDE_33",
+    carrierName: "Prut Logistica Leova SRL",
+    carrierPhone: "+373 68 332 990",
+    driverName: "Vasile Munteanu",
+    pricePerKm: 17.5,
+    hasConditioner: false,
+    totalPallets: 33,
+    freePallets: 14,
+    isVerifiedANTA: true,
+    gpsTrackerId: "Teltonika FMB920",
+    currentRaion: "leova",
+    destinationScope: "INTERN",
+    availableNow: true,
+    speedKmH: 72,
+    fuelLevelPercent: 84,
+    lat: 46.52,
+    lon: 28.39,
+    layoutOrientation: "2_WIDE",
+  },
+  {
+    id: "trk-09",
+    plate: "SLD 309",
+    model: "MAN TGX 18.440 (Prelată 13.6m)",
+    vehicleType: "SEMI_CURTAINSIDE_33",
+    carrierName: "Nistru Ciment Șoldănești Î.I.",
+    carrierPhone: "+373 79 110 445",
+    driverName: "Igor Burlacu",
+    pricePerKm: 18.0,
+    hasConditioner: false,
+    totalPallets: 33,
+    freePallets: 11,
+    isVerifiedANTA: true,
+    gpsTrackerId: "Teltonika FMB920",
+    currentRaion: "soldanesti",
+    destinationScope: "INTERN",
+    availableNow: true,
+    speedKmH: 70,
+    fuelLevelPercent: 74,
+    lat: 47.84,
+    lon: 28.69,
+    layoutOrientation: "2_WIDE",
+  },
+  {
+    id: "trk-10",
+    plate: "TLN 412",
+    model: "Scania R450 (Frigorific Schmitz)",
+    vehicleType: "SEMI_REEFER_33",
+    carrierName: "Telenești Express SRL",
+    carrierPhone: "+373 60 554 221",
+    driverName: "Radu Ciubotaru",
+    pricePerKm: 21.0,
+    hasConditioner: true,
+    totalPallets: 33,
+    freePallets: 6,
+    isVerifiedANTA: true,
+    gpsTrackerId: "Teltonika FMB920 + Temp",
+    currentRaion: "telenesti",
+    destinationScope: "INTERN",
+    availableNow: true,
+    speedKmH: 75,
+    fuelLevelPercent: 90,
+    temperatureCelsius: 4.1,
+    lat: 47.56,
+    lon: 28.42,
     layoutOrientation: "2_WIDE",
   },
 ];
@@ -491,28 +608,72 @@ export default function MapPage() {
     }
   };
 
-  // Sugestii de căutare
+  // Sugestii de căutare pentru toate raioanele și coridoarele
   const filteredSuggestions = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = searchQuery.trim();
     if (!q) {
       return [
         { type: "ROUTE", title: "Chișinău ➔ Bălți (Coridor M5/R14)", startId: "chisinau", endId: "balti" },
-        { type: "ROUTE", title: "Chișinău ➔ Ungheni (Vama Sculeni)", startId: "chisinau", endId: "ungheni" },
-        { type: "DISTRICT", title: "Mun. Chișinău (18 camioane)", district: ALL_DISTRICTS[0] },
-        { type: "DISTRICT", title: "Mun. Bălți (11 camioane)", district: ALL_DISTRICTS[1] },
-        { type: "DISTRICT", title: "Raionul Orhei (7 camioane)", district: ALL_DISTRICTS[2] },
+        { type: "ROUTE", title: "Chișinău ➔ Cantemir (prin Leova)", startId: "chisinau", endId: "cantemir" },
+        { type: "ROUTE", title: "Chișinău ➔ Șoldănești (prin Orhei)", startId: "chisinau", endId: "soldanesti" },
+        { type: "DISTRICT", title: "Raionul Cantemir (4 camioane)", district: ALL_DISTRICTS.find(d => d.id === "cantemir") || ALL_DISTRICTS[0] },
+        { type: "DISTRICT", title: "Raionul Leova (4 camioane)", district: ALL_DISTRICTS.find(d => d.id === "leova") || ALL_DISTRICTS[0] },
+        { type: "DISTRICT", title: "Raionul Șoldănești (4 camioane)", district: ALL_DISTRICTS.find(d => d.id === "soldanesti") || ALL_DISTRICTS[0] },
       ];
     }
 
+    const normQ = q
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+
     const matches: any[] = [];
     ALL_DISTRICTS.forEach((d) => {
-      if (d.name.toLowerCase().includes(q)) {
-        matches.push({ type: "DISTRICT", title: `${d.name} (${d.trucksCount} camioane)`, district: d });
+      const normName = d.name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+
+      const normId = d.id.replace(/[^a-z0-9]/g, "");
+
+      if (normName.includes(normQ) || normQ.includes(normId) || normId.includes(normQ)) {
+        matches.push({
+          type: "DISTRICT",
+          title: `${d.name} (${d.trucksCount} camioane)`,
+          district: d,
+        });
       }
     });
 
-    if (q.includes("chisinau") || q.includes("balti") || q.includes("spre")) {
-      matches.unshift({ type: "ROUTE", title: "Traseu: Chișinău ➔ Bălți", startId: "chisinau", endId: "balti" });
+    // Detecție rută dinamică dacă include două orașe
+    if (q.includes("-") || q.includes("spre") || q.includes("➔")) {
+      const parts = q.split(/[-–—]|spre|➔/).map((p) =>
+        p
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim()
+      );
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        const fromD = ALL_DISTRICTS.find((d) =>
+          d.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(parts[0]) ||
+          d.id.includes(parts[0])
+        );
+        const toD = ALL_DISTRICTS.find((d) =>
+          d.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(parts[1]) ||
+          d.id.includes(parts[1])
+        );
+        if (fromD && toD && fromD.id !== toD.id) {
+          matches.unshift({
+            type: "ROUTE",
+            title: `Traseu: ${fromD.name} ➔ ${toD.name}`,
+            startId: fromD.id,
+            endId: toD.id,
+          });
+        }
+      }
     }
 
     return matches;

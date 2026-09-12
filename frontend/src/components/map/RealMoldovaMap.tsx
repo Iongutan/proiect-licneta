@@ -233,6 +233,13 @@ export default function RealMoldovaMap({
     });
   }, [selectedDistrict]);
 
+  // Zbor lin către raionul selectat (zoom apropiat pentru vizualizare camioane GPS)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !selectedDistrict) return;
+    map.flyTo([selectedDistrict.lat, selectedDistrict.lon], 11, { duration: 0.8 });
+  }, [selectedDistrict]);
+
   // 3. CLUSTERING VIZUAL PE 3 NIVELURI DE ZOOM (Prompt K3)
   useEffect(() => {
     const map = mapInstanceRef.current;

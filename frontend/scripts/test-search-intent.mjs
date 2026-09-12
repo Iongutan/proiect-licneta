@@ -29,6 +29,28 @@ if (intent2.requestedQuantity !== 3) throw new Error("Cantitate greșită: aște
 if (intent2.origin !== "balti") throw new Error("Origine greșită: așteptat balti, primit " + intent2.origin);
 console.log("  ✔ Test 2 passed: Cantitate extrasă corect (3 paleți, Bălți)");
 
+// 1b. Teste specifice pentru raioanele mici menționate de utilizator (Cantemir, Leova, Șoldănești)
+const q3 = "Chișinău - Cantemir cu tranzit";
+const intent3 = parseSearchIntent(q3);
+if (intent3.origin !== "chisinau" || intent3.destination !== "cantemir" || !intent3.withTransit) {
+  throw new Error("Eșec parsare rută Cantemir: " + JSON.stringify(intent3));
+}
+console.log("  ✔ Test 3 passed: Rută Cantemir identificată (Chișinău ➔ Cantemir, cu tranzit)");
+
+const q4 = "Leova spre Chișinău";
+const intent4 = parseSearchIntent(q4);
+if (intent4.origin !== "leova" || intent4.destination !== "chisinau") {
+  throw new Error("Eșec parsare rută Leova: " + JSON.stringify(intent4));
+}
+console.log("  ✔ Test 4 passed: Rută Leova identificată (Leova ➔ Chișinău)");
+
+const q5 = "4 paleți la Șoldănești";
+const intent5 = parseSearchIntent(q5);
+if (intent5.origin !== "soldanesti" || intent5.requestedQuantity !== 4) {
+  throw new Error("Eșec parsare cerere Șoldănești: " + JSON.stringify(intent5));
+}
+console.log("  ✔ Test 5 passed: Cerere Șoldănești extrasă corect (4 paleți, Șoldănești)");
+
 // 2. Test Transit Matching & Strict Capacity Filter
 const mockFleet = [
   // Camion direct Chișinău -> Rezina cu 12 paleți liberi (> 3)

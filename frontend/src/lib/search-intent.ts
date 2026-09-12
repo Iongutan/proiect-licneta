@@ -36,44 +36,103 @@ export interface TransitMatchResult {
   overlapDistanceKm?: number;
 }
 
-// Dicționar de sinagrame și aliasuri raioane Moldova
+// Dicționar complet de aliasuri pentru toate cele 37 de unități teritoriale din Moldova
 const DISTRICT_ALIASES: Record<string, { id: string; name: string }> = {
+  // Municipii
   chisinau: { id: "chisinau", name: "Chișinău" },
   chisinaului: { id: "chisinau", name: "Chișinău" },
   balti: { id: "balti", name: "Bălți" },
-  orhei: { id: "orhei", name: "Orhei" },
-  rezina: { id: "rezina", name: "Rezina" },
-  soroca: { id: "soroca", name: "Soroca" },
-  ungheni: { id: "ungheni", name: "Ungheni" },
-  cahul: { id: "cahul", name: "Cahul" },
+  bender: { id: "bender", name: "Bender (Tighina)" },
+  tighina: { id: "bender", name: "Bender (Tighina)" },
+
+  // Raioane Nord
+  briceni: { id: "briceni", name: "Briceni" },
+  criva: { id: "briceni", name: "Briceni" },
+  donduseni: { id: "donduseni", name: "Dondușeni" },
+  drochia: { id: "drochia", name: "Drochia" },
   edinet: { id: "edinet", name: "Edineț" },
+  falesti: { id: "falesti", name: "Fălești" },
+  floresti: { id: "floresti", name: "Florești" },
+  glodeni: { id: "glodeni", name: "Glodeni" },
+  ocnita: { id: "ocnita", name: "Ocnița" },
+  otaci: { id: "ocnita", name: "Ocnița" },
+  riscani: { id: "riscani", name: "Rîșcani" },
+  singerei: { id: "singerei", name: "Sîngerei" },
+  soldanesti: { id: "soldanesti", name: "Șoldănești" },
+  soroca: { id: "soroca", name: "Soroca" },
+
+  // Raioane Centru
   "anenii noi": { id: "anenii_noi", name: "Anenii Noi" },
   aneniinoi: { id: "anenii_noi", name: "Anenii Noi" },
-  comrat: { id: "comrat", name: "Comrat" },
-  falesti: { id: "falesti", name: "Fălești" },
-  drochia: { id: "drochia", name: "Drochia" },
-  ialoveni: { id: "ialoveni", name: "Ialoveni" },
+  calarasi: { id: "calarasi", name: "Călărași" },
+  criuleni: { id: "criuleni", name: "Criuleni" },
+  dubasari: { id: "dubasari", name: "Dubăsari" },
   hincesti: { id: "hincesti", name: "Hîncești" },
+  leuseni: { id: "hincesti", name: "Hîncești" },
+  ialoveni: { id: "ialoveni", name: "Ialoveni" },
+  nisporeni: { id: "nisporeni", name: "Nisporeni" },
+  orhei: { id: "orhei", name: "Orhei" },
+  rezina: { id: "rezina", name: "Rezina" },
   straseni: { id: "straseni", name: "Strășeni" },
+  telenesti: { id: "telenesti", name: "Telenești" },
+  ungheni: { id: "ungheni", name: "Ungheni" },
+  sculeni: { id: "ungheni", name: "Ungheni" },
+
+  // Raioane Sud & Autonomii
+  basarabeasca: { id: "basarabeasca", name: "Basarabeasca" },
+  cahul: { id: "cahul", name: "Cahul" },
+  oancea: { id: "cahul", name: "Cahul" },
+  giurgiulesti: { id: "cahul", name: "Cahul" },
+  cantemir: { id: "cantemir", name: "Cantemir" },
   causeni: { id: "causeni", name: "Căușeni" },
   cimislia: { id: "cimislia", name: "Cimișlia" },
+  leova: { id: "leova", name: "Leova" },
+  "stefan voda": { id: "stefan_voda", name: "Ștefan Vodă" },
+  stefanvoda: { id: "stefan_voda", name: "Ștefan Vodă" },
+  taraclia: { id: "taraclia", name: "Taraclia" },
+  comrat: { id: "comrat", name: "Comrat (Găgăuzia)" },
+  gagauzia: { id: "comrat", name: "UTA Găgăuzia" },
+  ceadirlunga: { id: "comrat", name: "Ceadîr-Lunga" },
+  vulcanesti: { id: "comrat", name: "Vulcănești" },
+  transnistria: { id: "transnistria", name: "Transnistria (Tiraspol)" },
+  tiraspol: { id: "transnistria", name: "Transnistria (Tiraspol)" },
+  ribnita: { id: "transnistria", name: "Rîbnița" },
 };
 
-// Rute predefinite de tranzit prin Moldova (ex: mașini pe coridoare naționale)
+// Rute predefinite de tranzit prin Moldova (coridoare naționale acoperind toate regiunile)
 export const CORRIDOR_TRANSITS: Record<string, string[]> = {
   // Rută M5/R14 Bălți - Chișinău trece prin Sîngerei, Telenești, Strășeni
   "balti-chisinau": ["balti", "singerei", "telenesti", "straseni", "chisinau"],
   "chisinau-balti": ["chisinau", "straseni", "telenesti", "singerei", "balti"],
 
-  // Rută Chișinău - Rezina trece prin Orhei
-  "chisinau-rezina": ["chisinau", "orhei", "rezina"],
-  "rezina-chisinau": ["rezina", "orhei", "chisinau"],
+  // Rută Chișinău - Rezina trece prin Orhei, Șoldănești
+  "chisinau-rezina": ["chisinau", "orhei", "soldanesti", "rezina"],
+  "rezina-chisinau": ["rezina", "soldanesti", "orhei", "chisinau"],
+
+  // Rută Chișinău - Șoldănești
+  "chisinau-soldanesti": ["chisinau", "orhei", "soldanesti"],
+  "soldanesti-chisinau": ["soldanesti", "orhei", "chisinau"],
+
+  // Rută Chișinău - Cahul prin Hîncești, Leova, Cantemir
+  "chisinau-cahul": ["chisinau", "ialoveni", "hincesti", "leova", "cantemir", "cahul"],
+  "cahul-chisinau": ["cahul", "cantemir", "leova", "hincesti", "ialoveni", "chisinau"],
+
+  // Rută Chișinău - Cantemir
+  "chisinau-cantemir": ["chisinau", "hincesti", "leova", "cantemir"],
+  "cantemir-chisinau": ["cantemir", "leova", "hincesti", "chisinau"],
+
+  // Rută Chișinău - Leova
+  "chisinau-leova": ["chisinau", "hincesti", "leova"],
+  "leova-chisinau": ["leova", "hincesti", "chisinau"],
 
   // Rută Anenii Noi - Bălți trece prin Chișinău, Orhei
   "anenii_noi-balti": ["anenii_noi", "chisinau", "orhei", "balti"],
 
   // Rută Soroca - Chișinău trece prin Florești, Orhei
   "soroca-chisinau": ["soroca", "floresti", "orhei", "chisinau"],
+
+  // Rută Bălți - Briceni prin Rîșcani, Edineț
+  "balti-briceni": ["balti", "riscani", "edinet", "briceni"],
 };
 
 function normalizeStr(text: string): string {
