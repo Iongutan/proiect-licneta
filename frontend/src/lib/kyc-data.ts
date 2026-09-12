@@ -30,29 +30,72 @@ export interface CompanyKyc {
   created_at: string;
 }
 
+export interface DeliveryPhotoProof {
+  id: string;
+  url: string;
+  file_name: string;
+  timestamp: string;
+  gps_lat: number;
+  gps_lon: number;
+  uploaded_by: string;
+  company_idno: string;
+}
+
+export interface ContractNegotiationMsg {
+  id: string;
+  sender_company_name: string;
+  sender_role: "SHIPPER" | "CARRIER";
+  message: string;
+  proposed_price_mdl?: number;
+  created_at: string;
+}
+
 export interface DigitalContract {
   id: string;
   contract_number: string;
   order_id?: string;
   cluster_id?: string;
+  vehicle_id?: string;
   sme_company_name: string;
   sme_idno: string;
+  sme_legal_form?: "SRL" | "II" | "SA" | "ALTA";
   carrier_company_name: string;
   carrier_idno: string;
+  carrier_legal_form?: "SRL" | "II" | "SA" | "ALTA";
   corridor: string;
   goods_description: string;
   volume_m3: number;
   weight_kg: number;
+  pallet_count?: number;
+  price_per_km?: number;
+  distance_km?: number;
   total_price_mdl: number;
   standard_price_mdl: number;
   discount_saved_mdl: number;
   content_hash: string; // SHA-256 hash al clauzelor
-  status: "PENDING_SIGNATURE" | "ACCEPTED" | "CANCELLED";
+  status: "PENDING_SIGNATURE" | "ACCEPTED" | "DELIVERED" | "CANCELLED";
   created_at: string;
   accepted_at?: string;
   accepted_by?: string;
   accepted_ip?: string;
   legal_clauses: string[];
+
+  // PROMPT K9: Două căi de contractare
+  contract_path?: "PATH_A_PLATFORM" | "PATH_B_DIRECT";
+  disclaimer_accepted?: boolean;
+  disclaimer_accepted_at?: string;
+  shipper_confirmed?: boolean;
+  shipper_confirmed_at?: string;
+  carrier_confirmed?: boolean;
+  carrier_confirmed_at?: string;
+  is_fully_completed?: boolean;
+  gps_tracking_active?: boolean;
+
+  // PROMPT K11: Dovadă foto la livrare
+  delivery_photo?: DeliveryPhotoProof;
+
+  // PROMPT K8: Mesagerie negociere
+  negotiation_messages?: ContractNegotiationMsg[];
 }
 
 export interface Invoice {
@@ -200,28 +243,70 @@ export const INITIAL_DIGITAL_CONTRACTS: DigitalContract[] = [
     contract_number: "CTR-MD-2026-0812",
     order_id: "ord_md_001",
     cluster_id: "cl_nord_01",
+    vehicle_id: "vh-1",
     sme_company_name: "TechMold SRL",
     sme_idno: "1003600012345",
+    sme_legal_form: "SRL",
     carrier_company_name: "TransMoldova Express Î.I.",
     carrier_idno: "1004600034567",
+    carrier_legal_form: "II",
     corridor: "Chișinău (M5) ➔ Bălți",
     goods_description: "Componente electronice și piese industriale (3 paleți standard)",
     volume_m3: 2.4,
     weight_kg: 450,
+    pallet_count: 3,
+    distance_km: 135,
+    price_per_km: 18.5,
     total_price_mdl: 1450,
     standard_price_mdl: 3200,
     discount_saved_mdl: 1750,
     content_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    status: "ACCEPTED",
+    status: "DELIVERED",
     created_at: "2026-09-10T16:00:00Z",
     accepted_at: "2026-09-10T16:15:22Z",
     accepted_by: "Vasile Cojocaru (Administrator)",
     accepted_ip: "185.108.128.45",
+    contract_path: "PATH_A_PLATFORM",
+    disclaimer_accepted: true,
+    shipper_confirmed: true,
+    shipper_confirmed_at: "2026-09-11T12:30:00Z",
+    carrier_confirmed: true,
+    carrier_confirmed_at: "2026-09-11T12:20:00Z",
+    is_fully_completed: true,
+    gps_tracking_active: true,
+    delivery_photo: {
+      id: "photo-001",
+      url: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80",
+      file_name: "dovada_livrare_balti_rampa2.jpg",
+      timestamp: "2026-09-11 12:18:44",
+      gps_lat: 47.7612,
+      gps_lon: 27.9288,
+      uploaded_by: "Mihail Grosu (Șofer)",
+      company_idno: "1004600034567",
+    },
+    negotiation_messages: [
+      {
+        id: "msg-1",
+        sender_company_name: "TechMold SRL",
+        sender_role: "SHIPPER",
+        message: "Bună ziua, putem prelua 3 paleți standard la Bălți mâine la ora 10:00?",
+        proposed_price_mdl: 1400,
+        created_at: "2026-09-10 15:40",
+      },
+      {
+        id: "msg-2",
+        sender_company_name: "TransMoldova Express Î.I.",
+        sender_role: "CARRIER",
+        message: "Confirmăm preluarea. La 1.450 MDL acoperim și descărcarea mecanizată la rampă.",
+        proposed_price_mdl: 1450,
+        created_at: "2026-09-10 15:52",
+      },
+    ],
     legal_clauses: [
       "1. Părțile convin executarea transportului conform Codului Transporturilor Rutiere al RM nr. 150/2014.",
       "2. Transportatorul garantează deținerea poliței de asigurare a mărfii CMR valabilă pe teritoriul RM.",
-      "3. Tariful este fixat conform ofertei de grupare GroupLog și nu poate fi modificat unilateral.",
-      "4. Confirmarea recepției mărfii se efectuează digital prin geolocalizare GPS și cod PIN unic la destinație.",
+      "3. Calea A: Platforma OptiFleet asigură monitorizarea GPS pe toată durata cursei și confirmarea bilaterală.",
+      "4. Confirmarea recepției mărfii se efectuează digital prin geolocalizare GPS și fotografie la livrare.",
     ],
   },
   {
@@ -229,25 +314,82 @@ export const INITIAL_DIGITAL_CONTRACTS: DigitalContract[] = [
     contract_number: "CTR-MD-2026-0813",
     order_id: "ord_md_002",
     cluster_id: "cl_nord_01",
+    vehicle_id: "vh-2",
     sme_company_name: "AgroSupply SA",
     sme_idno: "1002600023456",
+    sme_legal_form: "SA",
     carrier_company_name: "TransMoldova Express Î.I.",
     carrier_idno: "1004600034567",
+    carrier_legal_form: "II",
     corridor: "Chișinău (M5) ➔ Bălți",
-    goods_description: "Semințe hibrid și ambalaje biodegradabile",
+    goods_description: "Semințe hibrid și ambalaje biodegradabile (5 paleți)",
     volume_m3: 5.1,
     weight_kg: 1200,
+    pallet_count: 5,
+    distance_km: 140,
+    price_per_km: 18.0,
     total_price_mdl: 2200,
     standard_price_mdl: 5400,
     discount_saved_mdl: 3200,
     content_hash: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     status: "PENDING_SIGNATURE",
     created_at: "2026-09-11T10:00:00Z",
+    contract_path: "PATH_A_PLATFORM",
+    disclaimer_accepted: true,
+    shipper_confirmed: false,
+    carrier_confirmed: false,
+    is_fully_completed: false,
+    gps_tracking_active: true,
+    negotiation_messages: [
+      {
+        id: "msg-201",
+        sender_company_name: "AgroSupply SA",
+        sender_role: "SHIPPER",
+        message: "Avem 5 paleți de semințe. Oferim 2.200 MDL.",
+        proposed_price_mdl: 2200,
+        created_at: "2026-09-11 09:30",
+      },
+    ],
     legal_clauses: [
       "1. Părțile convin executarea transportului conform Codului Transporturilor Rutiere al RM nr. 150/2014.",
       "2. Transportatorul garantează deținerea poliței de asigurare a mărfii CMR valabilă pe teritoriul RM.",
-      "3. Tariful este fixat conform ofertei de grupare GroupLog și nu poate fi modificat unilateral.",
-      "4. Confirmarea recepției mărfii se efectuează digital prin geolocalizare GPS și cod PIN unic la destinație.",
+      "3. Calea A: Platforma OptiFleet asigură monitorizarea GPS pe toată durata cursei și confirmarea bilaterală.",
+      "4. Confirmarea recepției mărfii se efectuează digital prin geolocalizare GPS și fotografie la livrare.",
+    ],
+  },
+  {
+    id: "ctr_003",
+    contract_number: "DIR-MD-2026-0901",
+    sme_company_name: "Orhei Fructe SRL",
+    sme_idno: "1003600078901",
+    sme_legal_form: "SRL",
+    carrier_company_name: "TransMobil SRL",
+    carrier_idno: "1003600099887",
+    carrier_legal_form: "SRL",
+    corridor: "Orhei ➔ Rezina",
+    goods_description: "Lăzi mere sortate calibru I (2 paleți)",
+    volume_m3: 1.8,
+    weight_kg: 850,
+    pallet_count: 2,
+    distance_km: 55,
+    price_per_km: 17.0,
+    total_price_mdl: 950,
+    standard_price_mdl: 1800,
+    discount_saved_mdl: 850,
+    content_hash: "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
+    status: "ACCEPTED",
+    created_at: "2026-09-11T14:00:00Z",
+    contract_path: "PATH_B_DIRECT",
+    disclaimer_accepted: true,
+    disclaimer_accepted_at: "2026-09-11T14:05:10Z",
+    shipper_confirmed: true,
+    carrier_confirmed: true,
+    is_fully_completed: true,
+    gps_tracking_active: false,
+    legal_clauses: [
+      "1. Înțelegere directă (Calea B) fără medierea sau asigurarea platformei OptiFleet.",
+      "2. Părțile își asumă integral răspunderea privind starea mărfii conform Codului Civil al RM.",
+      "3. Clauza de exonerare: Platforma NU își asumă răspunderea pentru marfa transportată.",
     ],
   },
 ];

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { VehicleBlueprintType, getVehicleSvgString, PlacedPallet } from "@/components/logistics/VehicleBlueprintSVG";
+import { computeClusterView, getClusterLevel, ClusterLevel } from "@/lib/clustering";
 
 export interface AvailableTruck {
   id: string;
@@ -90,6 +91,9 @@ export default function RealMoldovaMap({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
+  const [currentZoom, setCurrentZoom] = useState<number>(8);
+
+  const regionalMarkersRef = useRef<L.Marker[]>([]);
   const districtMarkersRef = useRef<{ [id: string]: L.Marker }>({});
   const truckMarkersRef = useRef<L.Marker[]>([]);
   const polylineRef = useRef<L.Polyline | null>(null);
@@ -138,6 +142,10 @@ export default function RealMoldovaMap({
       maxZoom: 19,
       attribution: "© OpenStreetMap · OptiFleet B2B Moldova",
     }).addTo(map);
+
+    map.on("zoomend", () => {
+      setCurrentZoom(map.getZoom());
+    });
 
     mapInstanceRef.current = map;
 
@@ -188,7 +196,7 @@ export default function RealMoldovaMap({
               );
               if (matched) {
                 onSelectDistrict(matched);
-                map.flyTo([matched.lat, matched.lon], 10, { duration: 0.5 });
+                map.flyTo([matched.lat, matched.lon], 11, { duration: 0.5 });
               }
             });
           },
@@ -225,114 +233,135 @@ export default function RealMoldovaMap({
     });
   }, [selectedDistrict]);
 
-  // 3. Etichete Denumiri Raioane
+  // 3. CLUSTERING VIZUAL PE 3 NIVELURI DE ZOOM (Prompt K3)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
+
+    const clusterView = computeClusterView(availableTrucks, currentZoom);
+
+    // Curățare markeri existenți
+    regionalMarkersRef.current.forEach((m) => m.remove());
+    regionalMarkersRef.current = [];
 
     Object.values(districtMarkersRef.current).forEach((m) => m.remove());
     districtMarkersRef.current = {};
 
-    districts.forEach((dist) => {
-      const isSelected = selectedDistrict?.id === dist.id;
-
-      const trucksInDistrict = availableTrucks.filter(
-        (t) => t.currentRaion === dist.id || (dist.id === "chisinau" && t.currentRaion === "chisinau")
-      );
-
-      const labelIcon = L.divIcon({
-        className: "clean-district-label",
-        html: `
-          <div class="clean-district-pill ${isSelected ? "is-selected" : ""}">
-            <span>${dist.name}</span>
-            <span class="count">${trucksInDistrict.length}</span>
-          </div>
-        `,
-        iconSize: [110, 24],
-        iconAnchor: [55, 12],
-      });
-
-      const marker = L.marker([dist.lat, dist.lon], { icon: labelIcon, zIndexOffset: 100 }).addTo(map);
-
-      marker.on("click", () => {
-        onSelectDistrict(dist);
-        map.flyTo([dist.lat, dist.lon], 10, { duration: 0.5 });
-      });
-
-      districtMarkersRef.current[dist.id] = marker;
-    });
-  }, [districts, selectedDistrict, availableTrucks, onSelectDistrict]);
-
-  // 4. PICTOGRAFIERE MAȘINI ÎN FORMĂ DE LOCATOR (Cu cerc albastru de locație la bază și paleți desenați în interior)
-  // Exact specificația: 'in forma de locator unde jos au cerc albastru de locatie si asta vine deasupra lor'
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    // Curățare markeri mașini existenți
     truckMarkersRef.current.forEach((m) => m.remove());
     truckMarkersRef.current = [];
 
-    // Afișăm mașinile din raionul selectat (sau toate dacă Chișinău e activ)
-    const activeTrucks = availableTrucks.filter(
-      (t) => t.currentRaion === selectedDistrict?.id || selectedDistrict?.id === "chisinau"
-    );
+    // ── NIVEL 1: Zoom Mic (< 8) -> Cercuri Agregate Macro-Regiuni ──
+    if (clusterView.level === "REGIONAL" && clusterView.regionalClusters) {
+      clusterView.regionalClusters.forEach((reg) => {
+        const clusterIcon = L.divIcon({
+          className: "regional-cluster-marker",
+          html: `
+            <div class="regional-cluster-badge" title="Clic pentru a mări Regiunea ${reg.name}">
+              <span class="regional-cluster-count">${reg.totalTrucks} camioane</span>
+              <span>${reg.name}</span>
+              <span class="regional-cluster-sub">(${reg.freePallets} paleți liberi)</span>
+            </div>
+          `,
+          iconSize: [200, 36],
+          iconAnchor: [100, 18],
+        });
 
-    activeTrucks.forEach((t) => {
-      const isGpsActive = Boolean(t.gpsTrackerId) && t.speedKmH >= 0;
-      const occupiedPallets = Math.max(0, t.totalPallets - t.freePallets);
+        const marker = L.marker([reg.lat, reg.lon], { icon: clusterIcon, zIndexOffset: 200 }).addTo(map);
+        marker.on("click", () => {
+          map.flyTo([reg.lat, reg.lon], 9, { duration: 0.6 });
+        });
 
-      // Schiță tehnică line-art cu PALEȚII ALBAȘTRI desenați direct în interiorul caroseriei!
-      const svgString = getVehicleSvgString(
-        t.vehicleType,
-        t.hasConditioner,
-        "#0f172a",
-        "left",
-        t.customPallets,
-        occupiedPallets,
-        t.layoutOrientation || "2_WIDE"
+        regionalMarkersRef.current.push(marker);
+      });
+      return;
+    }
+
+    // ── NIVEL 2: Zoom Mediu (8 - 10) -> Subgrupe pe Raioane Individuale ──
+    if (clusterView.level === "DISTRICT") {
+      districts.forEach((dist) => {
+        const isSelected = selectedDistrict?.id === dist.id;
+        const trucksInDistrict = availableTrucks.filter(
+          (t) => t.currentRaion === dist.id || (dist.id === "chisinau" && t.currentRaion === "chisinau")
+        );
+
+        const labelIcon = L.divIcon({
+          className: "clean-district-label",
+          html: `
+            <div class="clean-district-pill ${isSelected ? "is-selected" : ""}">
+              <span>${dist.name}</span>
+              <span class="count">${trucksInDistrict.length}</span>
+            </div>
+          `,
+          iconSize: [120, 26],
+          iconAnchor: [60, 13],
+        });
+
+        const marker = L.marker([dist.lat, dist.lon], { icon: labelIcon, zIndexOffset: 100 }).addTo(map);
+        marker.on("click", () => {
+          onSelectDistrict(dist);
+          map.flyTo([dist.lat, dist.lon], 11, { duration: 0.5 });
+        });
+
+        districtMarkersRef.current[dist.id] = marker;
+      });
+      return;
+    }
+
+    // ── NIVEL 3: Zoom Mare (> 10) -> Vehicule Individuale ca Markeri Line-Art ──
+    if (clusterView.level === "VEHICLE") {
+      const activeTrucks = availableTrucks.filter(
+        (t) => !selectedDistrict || t.currentRaion === selectedDistrict.id || selectedDistrict.id === "chisinau"
       );
 
-      const locatorHtml = `
-        <div class="truck-map-locator" onclick="window.__optifleet_select_truck('${t.id}')" title="Clic pentru a inspecta și configura paleții">
-          <!-- 1. Corpul Camionului (Schiță tehnică cu paleți vizibili în interior) -->
-          <div class="truck-locator-badge">
-            <div class="truck-svg-holder">
-              ${svgString}
+      activeTrucks.forEach((t) => {
+        const isGpsActive = Boolean(t.gpsTrackerId) && t.speedKmH >= 0;
+        const occupiedPallets = Math.max(0, t.totalPallets - t.freePallets);
+
+        const svgString = getVehicleSvgString(
+          t.vehicleType,
+          t.hasConditioner,
+          "#0f172a",
+          "left",
+          t.customPallets,
+          occupiedPallets,
+          t.layoutOrientation || "2_WIDE"
+        );
+
+        const locatorHtml = `
+          <div class="truck-map-locator" onclick="window.__optifleet_select_truck('${t.id}')" title="Clic pentru a inspecta vehiculul ${t.plate}">
+            <div class="truck-locator-badge">
+              <div class="truck-svg-holder">
+                ${svgString}
+              </div>
+              <div class="truck-locator-footer">
+                <span class="locator-plate">${t.plate}</span>
+                <span class="${isGpsActive ? "locator-gps-active" : "locator-gps-inactive"}">
+                  GPS ${isGpsActive ? "●" : "✗"}
+                </span>
+                <span style="color: #2563eb; font-weight: 700;">
+                  ${t.totalPallets > 0 ? `${t.freePallets} liberi` : "Utilaj"}
+                </span>
+              </div>
             </div>
-            <div class="truck-locator-footer">
-              <span class="locator-plate">${t.plate}</span>
-              <span class="${isGpsActive ? 'locator-gps-active' : 'locator-gps-inactive'}">
-                GPS ${isGpsActive ? '●' : '✗'}
-              </span>
-              <span style="color: #2563eb; font-weight: 700;">
-                ${t.totalPallets > 0 ? `${t.freePallets} liberi` : 'Utilaj'}
-              </span>
+            <div class="truck-locator-stem"></div>
+            <div class="truck-locator-anchor-circle">
+              <div class="pulse-center-dot"></div>
             </div>
           </div>
+        `;
 
-          <!-- 2. Tija de legătură -->
-          <div class="truck-locator-stem"></div>
+        const truckIcon = L.divIcon({
+          className: "truck-map-marker",
+          html: locatorHtml,
+          iconSize: [142, 68],
+          iconAnchor: [71, 68],
+        });
 
-          <!-- 3. Cercul Albastru de Locație GPS la Bază (Radar Pulse) -->
-          <div class="truck-locator-anchor-circle">
-            <div class="pulse-center-dot"></div>
-          </div>
-        </div>
-      `;
-
-      // Dimensiuni compacte: 142px lățime, 68px înălțime, ancorat la baza cercului albastru
-      const truckIcon = L.divIcon({
-        className: "truck-map-marker",
-        html: locatorHtml,
-        iconSize: [142, 68],
-        iconAnchor: [71, 68],
+        const truckMarker = L.marker([t.lat, t.lon], { icon: truckIcon, zIndexOffset: 500 }).addTo(map);
+        truckMarkersRef.current.push(truckMarker);
       });
-
-      const truckMarker = L.marker([t.lat, t.lon], { icon: truckIcon, zIndexOffset: 500 }).addTo(map);
-      truckMarkersRef.current.push(truckMarker);
-    });
-  }, [availableTrucks, selectedDistrict]);
+    }
+  }, [availableTrucks, currentZoom, districts, selectedDistrict, onSelectDistrict]);
 
   // 5. Traseu Rutier Real (OSRM Polyline)
   useEffect(() => {

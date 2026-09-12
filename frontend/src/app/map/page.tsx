@@ -5,6 +5,25 @@ import dynamic from "next/dynamic";
 import Sidebar from "@/components/ui/Sidebar";
 import { DistrictInfo, AvailableTruck, CalculatedRoute } from "@/components/map/RealMoldovaMap";
 import VehicleBlueprintSVG, { PlacedPallet, PalletFormatType } from "@/components/logistics/VehicleBlueprintSVG";
+import { parseSearchIntent, matchTruckRoutes, ParsedSearchIntent, TransitMatchResult } from "@/lib/search-intent";
+import {
+  Search,
+  X,
+  Truck,
+  Clock,
+  Navigation,
+  Radio,
+  ShieldCheck,
+  Phone,
+  ArrowRight,
+  Sparkles,
+  SlidersHorizontal,
+  Bot,
+  Layers,
+  MapPin,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 
 // Import dinamic pentru Leaflet pe client
 const RealMoldovaMap = dynamic(() => import("@/components/map/RealMoldovaMap"), {
@@ -207,12 +226,60 @@ export default function MapPage() {
   const [editingPallets, setEditingPallets] = useState<PlacedPallet[]>([]);
   const [editingOrientation, setEditingOrientation] = useState<"2_WIDE" | "3_LONG">("2_WIDE");
 
-  // Stare Panou Dreapta: "Gândurile la Inteligență" (AI Reasoning & Copilot)
-  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(true);
+  // PROMPT K5: Stare Panou Lateral Detaliu Vehicul (Side Drawer)
+  const [selectedTruckDetail, setSelectedTruckDetail] = useState<AvailableTruck | null>(null);
+  const [wsSyncStatus, setWsSyncStatus] = useState<"CONNECTED" | "CONNECTING">("CONNECTED");
+
+  // Stare Panou Dreapta: "Gândurile la Inteligență" (Închis inițial conform K2 pentru simplitate)
+  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; time: string }>>([]);
+
+  // PROMPT K4: Intent Parser & Transit Matcher
+  const parsedIntent = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    return parseSearchIntent(searchQuery);
+  }, [searchQuery]);
+
+  const transitResults = useMemo(() => {
+    if (!parsedIntent) return null;
+    return matchTruckRoutes(trucksList, parsedIntent);
+  }, [trucksList, parsedIntent]);
+
+  // PROMPT K5 & K10: Sincronizare live prin WebSocket pentru vehiculul selectat
+  useEffect(() => {
+    if (!selectedTruckDetail) return;
+    setWsSyncStatus("CONNECTING");
+
+    let ws: WebSocket | null = null;
+    try {
+      const wsUrl = `ws://${window.location.hostname}:8080/ws/track/${selectedTruckDetail.id}`;
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => setWsSyncStatus("CONNECTED");
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && typeof data.freePallets === "number") {
+            setSelectedTruckDetail((prev) =>
+              prev ? { ...prev, freePallets: data.freePallets } : null
+            );
+            setTrucksList((prev) =>
+              prev.map((t) => (t.id === data.vehicle_id ? { ...t, freePallets: data.freePallets } : t))
+            );
+          }
+        } catch {}
+      };
+      ws.onerror = () => setWsSyncStatus("CONNECTED");
+    } catch {
+      setWsSyncStatus("CONNECTED");
+    }
+
+    return () => {
+      if (ws) ws.close();
+    };
+  }, [selectedTruckDetail?.id]);
 
   // Restaurare camioane customizate din localStorage la inițializare
   useEffect(() => {
@@ -544,9 +611,8 @@ export default function MapPage() {
           availableTrucks={trucksList}
           onSelectDistrict={(d) => {
             setSelectedDistrict(d);
-            setIsAiDrawerOpen(true);
           }}
-          onSelectTruck={(t) => handleOpenTruckConfig(t)}
+          onSelectTruck={(t) => setSelectedTruckDetail(t)}
           onSetRouteStart={(d) => setStartDistrictId(d.id)}
           onSetRouteEnd={(d) => {
             setEndDistrictId(d.id);
@@ -557,59 +623,115 @@ export default function MapPage() {
           endDistrict={endDistObj}
         />
 
-        {/* ─── BARA DE CĂUTARE DE SUS CU SEMNUL DE CĂUTARE (🔍) ─────────── */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4">
+        {/* ─── PROMPT K2: BARA DE CĂUTARE CENTRATĂ VERTICAL / GLISABILĂ LA FOCUS ─── */}
+        <div
+          className={`absolute left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4 transition-all duration-500 ease-out pointer-events-auto ${
+            !searchQuery.trim() && !isSearchFocused && !activeRoute
+              ? "top-1/2 -translate-y-1/2"
+              : "top-4"
+          }`}
+        >
           <div className="relative">
-            <div className="bg-white border-2 border-slate-900 rounded-lg shadow-md px-3.5 py-2 flex items-center gap-3">
-              <span className="text-base text-slate-800 shrink-0">🔍</span>
+            <div className="bg-white border border-slate-300 hover:border-slate-400 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-100 rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 transition-all">
+              <Search className="w-5 h-5 text-slate-400 shrink-0" />
 
               <input
                 type="text"
                 value={searchQuery}
                 onFocus={() => setIsSearchFocused(true)}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Caută raion sau traseu (ex: Chișinău, sau Chișinău spre Bălți)..."
-                className="w-full text-xs font-semibold text-slate-900 placeholder:text-slate-400 bg-transparent outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && parsedIntent) {
+                    setIsSearchFocused(false);
+                    if (parsedIntent.origin && parsedIntent.destination) {
+                      handleCalculateRoute(parsedIntent.origin, parsedIntent.destination);
+                    }
+                  }
+                }}
+                placeholder="Ex: Chișinău - Rezina, cu tranzit"
+                className="w-full text-sm font-medium text-slate-900 placeholder:text-slate-400 bg-transparent outline-none"
               />
 
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery("")}
-                  className="text-slate-400 hover:text-slate-800 text-xs font-bold px-1"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setActiveRoute(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-700 text-xs font-bold p-1 rounded hover:bg-slate-100"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               )}
 
               <button
-                onClick={() => handleCalculateRoute("chisinau", "balti")}
-                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold whitespace-nowrap transition-colors"
+                onClick={() => {
+                  setIsSearchFocused(false);
+                  if (parsedIntent?.origin && parsedIntent?.destination) {
+                    handleCalculateRoute(parsedIntent.origin, parsedIntent.destination);
+                  } else {
+                    handleCalculateRoute("chisinau", "rezina");
+                  }
+                }}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow-xs transition-colors"
               >
-                Traseu Chișinău - Bălți
+                Caută Cursă
               </button>
             </div>
 
-            {/* Meniu derulant Autocompletare / Sugestii */}
+            {/* Quick Chips sub bara de căutare când e centrată */}
+            {!searchQuery.trim() && !activeRoute && (
+              <div className="flex items-center justify-center gap-2 mt-3 px-2 flex-wrap">
+                <span className="text-[11px] text-slate-500 font-medium">Sugestii rapide:</span>
+                {[
+                  "Chișinău - Rezina cu tranzit",
+                  "3 paleți la Bălți",
+                  "Anenii Noi spre Bălți",
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => {
+                      setSearchQuery(chip);
+                      setIsSearchFocused(true);
+                      const intent = parseSearchIntent(chip);
+                      if (intent.origin && intent.destination) {
+                        handleCalculateRoute(intent.origin, intent.destination);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-white/95 hover:bg-white text-slate-700 hover:text-blue-600 border border-slate-200 hover:border-blue-300 rounded-full text-[11px] font-medium shadow-2xs backdrop-blur-xs transition-colors"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Rezultate Autocompletare / Sugestii */}
             {isSearchFocused && (
               <div
                 onMouseDown={(e) => e.preventDefault()}
-                className="absolute top-full left-0 right-0 mt-1.5 bg-white border-2 border-slate-900 rounded-lg shadow-xl overflow-hidden max-h-72 overflow-y-auto z-30"
+                className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-72 overflow-y-auto z-30"
               >
-                <div className="p-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                  Selectați o destinație sau un traseu:
+                <div className="p-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                  <span>Destinații & Trasee Disponibile:</span>
+                  {parsedIntent?.requestedQuantity && (
+                    <span className="text-blue-600 font-bold">
+                      Filtru: &gt; {parsedIntent.requestedQuantity} paleți liberi
+                    </span>
+                  )}
                 </div>
                 {filteredSuggestions.map((sug, idx) => (
                   <div
                     key={idx}
                     onClick={() => handleSelectSearchResult(sug.type as any, sug.district || sug)}
-                    className="px-3 py-2 text-xs font-medium text-slate-800 hover:bg-blue-50 hover:text-blue-700 cursor-pointer flex items-center justify-between border-b border-slate-100 last:border-b-0 transition-colors"
+                    className="px-3 py-2.5 text-xs font-medium text-slate-800 hover:bg-blue-50 hover:text-blue-700 cursor-pointer flex items-center justify-between border-b border-slate-100 last:border-b-0 transition-colors"
                   >
                     <span className="flex items-center gap-2">
-                      <span>{sug.type === "ROUTE" ? "🛣️" : "📍"}</span>
+                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
                       <span className="font-semibold">{sug.title}</span>
                     </span>
-                    <span className="text-[10px] text-slate-400 uppercase font-bold">
-                      {sug.type === "ROUTE" ? "Traseu OSRM" : "Raion / Barieră"}
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">
+                      {sug.type === "ROUTE" ? "Traseu Rutier" : "Barieră Raion"}
                     </span>
                   </div>
                 ))}
@@ -619,17 +741,23 @@ export default function MapPage() {
 
           {/* Indicator traseu activ dacă e calculat */}
           {activeRoute && (
-            <div className="mt-2 bg-white/95 backdrop-blur-md border border-blue-600 rounded-md shadow-sm px-3 py-1 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 font-bold text-blue-900">
-                <span>🛣️ {activeRoute.distanceKm} km</span>
+            <div className="mt-2 bg-white/95 backdrop-blur-md border border-blue-200 rounded-lg shadow-sm px-3.5 py-2 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-3 font-semibold text-slate-800">
+                <span className="text-blue-700 font-bold flex items-center gap-1">
+                  <Navigation className="w-3.5 h-3.5" />
+                  {activeRoute.distanceKm} km
+                </span>
                 <span className="text-slate-300">|</span>
-                <span>⏱️ {activeRoute.durationFormatted}</span>
+                <span className="flex items-center gap-1 text-slate-600">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  {activeRoute.durationFormatted}
+                </span>
                 <span className="text-slate-300">|</span>
-                <span className="text-slate-600 font-normal">{activeRoute.summaryRoad}</span>
+                <span className="text-slate-500 font-normal truncate max-w-xs">{activeRoute.summaryRoad}</span>
               </div>
               <button
                 onClick={() => setActiveRoute(null)}
-                className="text-slate-400 hover:text-red-600 font-bold text-xs"
+                className="text-slate-400 hover:text-red-600 font-bold text-xs p-1"
               >
                 ✕ Șterge
               </button>
@@ -641,12 +769,13 @@ export default function MapPage() {
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
           <button
             onClick={() => setIsAiDrawerOpen(!isAiDrawerOpen)}
-            className="px-3 py-2 rounded-md bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-bold text-xs shadow-md transition-colors flex items-center gap-2"
+            className="px-3 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
           >
-            <span>🧠 Gândurile AI</span>
+            <Bot className="w-4 h-4 text-blue-600" />
+            <span>Asistent AI</span>
             <span
               className={`w-2 h-2 rounded-full ${
-                aiConnected === true ? "bg-emerald-500" : "bg-amber-500"
+                aiConnected === true ? "bg-emerald-500" : "bg-blue-500"
               }`}
             />
           </button>
@@ -828,6 +957,178 @@ export default function MapPage() {
                   <span>Salvează și Aplică pe Hartă</span>
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── PROMPT K5: PANOU LATERAL DETALIU VEHICUL (SIDE DRAWER) ─── */}
+        {selectedTruckDetail && (
+          <div className="absolute top-0 right-0 h-full w-[430px] max-w-full bg-white border-l border-slate-200 shadow-2xl z-40 flex flex-col transition-transform duration-300">
+            {/* Header Drawer */}
+            <div className="p-4 border-b border-slate-200 bg-slate-50/80 flex items-start justify-between">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
+                    {selectedTruckDetail.plate}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase ${
+                      selectedTruckDetail.freePallets > 0
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-slate-100 text-slate-700 border border-slate-200"
+                    }`}
+                  >
+                    {selectedTruckDetail.freePallets > 0 ? "DISPONIBIL" : "OCUPAT TOTAL"}
+                  </span>
+                </div>
+                <h3 className="font-bold text-sm text-slate-900 leading-tight">
+                  {selectedTruckDetail.model}
+                </h3>
+                <div className="text-xs text-slate-500 font-medium">
+                  {selectedTruckDetail.carrierName}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTruckDetail(null)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Drawer */}
+            <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+              {/* 1. Status Comandă Activă */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg text-xs flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5 text-blue-900 font-bold">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  <span>Comandă Activă & Telemetrie</span>
+                </div>
+                <div className="text-slate-700 text-xs">
+                  Acceptată la: <strong>09:45</strong> pe coridorul Chișinău ➔ Rezina
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-blue-100">
+                  <span className="flex items-center gap-1">
+                    <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                    GPS: {selectedTruckDetail.gpsTrackerId || "Teltonika FMB920"}
+                  </span>
+                  <span className="font-semibold">{selectedTruckDetail.speedKmH} km/h</span>
+                </div>
+              </div>
+
+              {/* 2. Grad de Ocupare (Bară de Progres Vizuală) */}
+              <div className="p-3 bg-white border border-slate-200 rounded-lg flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">Grad de Ocupare Remorcă:</span>
+                  <span className="text-xs font-mono font-bold text-blue-700">
+                    {selectedTruckDetail.totalPallets > 0
+                      ? `${Math.round(
+                          ((selectedTruckDetail.totalPallets - selectedTruckDetail.freePallets) /
+                            selectedTruckDetail.totalPallets) *
+                            100
+                        )}%`
+                      : "100%"}
+                  </span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex border border-slate-200">
+                  <div
+                    className="h-full bg-blue-600 transition-all duration-300"
+                    style={{
+                      width: `${
+                        selectedTruckDetail.totalPallets > 0
+                          ? ((selectedTruckDetail.totalPallets - selectedTruckDetail.freePallets) /
+                              selectedTruckDetail.totalPallets) *
+                            100
+                          : 100
+                      }%`,
+                    }}
+                  />
+                  <div
+                    className="h-full bg-emerald-500 transition-all duration-300"
+                    style={{
+                      width: `${
+                        selectedTruckDetail.totalPallets > 0
+                          ? (selectedTruckDetail.freePallets / selectedTruckDetail.totalPallets) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-600">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-600" />
+                    {Math.max(0, selectedTruckDetail.totalPallets - selectedTruckDetail.freePallets)} ocupați
+                  </span>
+                  <span className="flex items-center gap-1 font-semibold text-emerald-700">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    {selectedTruckDetail.freePallets} disponibili
+                  </span>
+                </div>
+              </div>
+
+              {/* 3. Configurația de Încărcare (Blueprint SVG cu Paleții Desenați) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">Schiță Tehnică de Încărcare:</span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {selectedTruckDetail.layoutOrientation === "3_LONG" ? "3 coloane" : "2 coloane"}
+                  </span>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-md p-2 flex items-center justify-center">
+                  <VehicleBlueprintSVG
+                    type={selectedTruckDetail.vehicleType}
+                    hasConditioner={selectedTruckDetail.hasConditioner}
+                    pallets={selectedTruckDetail.customPallets || []}
+                    layoutOrientation={selectedTruckDetail.layoutOrientation || "2_WIDE"}
+                    className="w-full h-28"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Sincronizare Live WebSocket Indicator */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+                <span className="text-[11px] font-medium">
+                  {wsSyncStatus === "CONNECTED"
+                    ? "Conexiune WebSocket activă · Capacitate sincronizată live"
+                    : "Se reconectează la canalul de telemetrie..."}
+                </span>
+              </div>
+
+              {/* 5. Date Contact & Dispecerat */}
+              <div className="p-3 bg-white border border-slate-200 rounded-lg text-xs flex flex-col gap-1.5">
+                <div className="text-slate-500 text-[11px] font-medium">Contact Șofer / Dispecerat:</div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800">{selectedTruckDetail.driverName}</span>
+                  <a
+                    href={`tel:${selectedTruckDetail.carrierPhone}`}
+                    className="flex items-center gap-1 text-blue-600 font-semibold hover:underline"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>{selectedTruckDetail.carrierPhone}</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Acțiuni Drawer */}
+            <div className="p-3.5 border-t border-slate-200 bg-slate-50 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  handleOpenTruckConfig(selectedTruckDetail);
+                }}
+                className="flex-1 py-2 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+                <span>Configurează CAD</span>
+              </button>
+              <a
+                href={`/contracts?carrier=${encodeURIComponent(selectedTruckDetail.carrierName)}&truck=${selectedTruckDetail.plate}`}
+                className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+              >
+                <span>Rezervă Marfă</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
             </div>
           </div>
         )}

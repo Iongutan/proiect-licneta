@@ -126,16 +126,24 @@ export default function OrdersPage() {
                       </span>
                     </td>
                     <td>
-                      {order.status === "PENDING" && (
-                        <button
-                          onClick={() => {
-                            if (confirm("Anulați comanda?")) cancelOrder(order.id);
-                          }}
-                          className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded border border-red-200"
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`/contracts?order=${order.id}`}
+                          className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-200 font-semibold"
                         >
-                          Anulează
-                        </button>
-                      )}
+                          Acord / Contract
+                        </a>
+                        {order.status === "PENDING" && (
+                          <button
+                            onClick={() => {
+                              if (confirm("Anulați comanda?")) cancelOrder(order.id);
+                            }}
+                            className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded border border-red-200"
+                          >
+                            Anulează
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

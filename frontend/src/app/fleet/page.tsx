@@ -1,9 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/ui/Sidebar";
 import VehicleBlueprintSVG, { VehicleBlueprintType } from "@/components/logistics/VehicleBlueprintSVG";
+import {
+  STANDARD_PALLETS,
+  PrecisionPallet,
+  canPlacePallet,
+  calculateTotalPayload,
+  StandardPalletType,
+} from "@/lib/pallet-positioning";
+import {
+  Plus,
+  Truck,
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  SlidersHorizontal,
+  Radio,
+  Scale,
+  DollarSign,
+  AlertTriangle,
+  Info,
+  Layers,
+  Sparkles,
+  X,
+  Phone,
+  User,
+  ShieldCheck,
+  CheckCircle2,
+} from "lucide-react";
 
 export interface FleetVehicle {
   id: string;
@@ -151,40 +178,164 @@ export default function FleetPage() {
     Array.from({ length: 33 }, (_, i) => i < 21) // 21 ocupați inițial
   );
 
-  // Modal Adăugare Vehicul
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formPlate, setFormPlate] = useState("");
-  const [formModel, setFormModel] = useState("");
-  const [formType, setFormType] = useState<VehicleBlueprintType>("SEMI_CURTAINSIDE_33");
-  const [formCarrier, setFormCarrier] = useState("TransMold Express SRL");
-  const [formDriver, setFormDriver] = useState("");
-  const [formPhone, setFormPhone] = useState("");
-  const [formPrice, setFormPrice] = useState(18.5);
-  const [formConditioner, setFormConditioner] = useState(false);
-  const [formPallets, setFormPallets] = useState(33);
-  const [formGps, setFormGps] = useState("GPS-TK-");
-  const [formScope, setFormScope] = useState<"INTERN" | "INTERNATIONAL">("INTERN");
-  const [formRoute, setFormRoute] = useState("Chișinău ➔ Bălți");
+  // PROMPT K6: Flux Constructor Stepper Pas-cu-Pas (4 Pași)
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // Calcule pentru Configuratorul Interactiv
-  const totalOccupiedCount = palletSlots.filter(Boolean).length;
-  const totalSlotsCount = layoutOrientation === "3_LONG" ? 33 : 32;
-  const totalLoadedWeightKg = totalOccupiedCount * palletWeightKg;
+  // Pasul 1: Marcă, model, înmatriculare, transportator, șofer
+  const [stepPlate, setStepPlate] = useState("");
+  const [stepModel, setStepModel] = useState("");
+  const [stepCarrier, setStepCarrier] = useState("TransMold Express SRL");
+  const [stepDriver, setStepDriver] = useState("");
+  const [stepPhone, setStepPhone] = useState("");
+
+  // Pasul 2: Tip caroserie
+  const [stepType, setStepType] = useState<VehicleBlueprintType>("SEMI_CURTAINSIDE_33");
+  const [stepHasReefer, setStepHasReefer] = useState(false);
+
+  // Pasul 3: Dimensiuni interior, capacitate, sarcină maximă, tarif/km (K12)
+  const [stepLengthCm, setStepLengthCm] = useState(1360);
+  const [stepWidthCm, setStepWidthCm] = useState(245);
+  const [stepHeightCm, setStepHeightCm] = useState(270);
+  const [stepMaxPayloadKg, setStepMaxPayloadKg] = useState(24000);
+  const [stepTotalPallets, setStepTotalPallets] = useState(33);
+  const [stepPricePerKm, setStepPricePerKm] = useState(18.5);
+
+  // Pasul 4: Dispozitiv GPS
+  const [stepGpsTrackerId, setStepGpsTrackerId] = useState("");
+  const [stepGpsProtocol, setStepGpsProtocol] = useState("TELTONIKA_FMB920");
+
+  // PROMPT K7: Stare Constructor Avansat de Poziționare Paleți 2D cu Verificare Coliziuni
+  const [activeFormatTool, setActiveFormatTool] = useState<StandardPalletType>("EUR_120x80");
+  const [precisionPallets, setPrecisionPallets] = useState<PrecisionPallet[]>([
+    { id: "p-1", palletNumber: 1, format: "EUR_120x80", x: 20, y: 20, width: 120, length: 80, weightKg: 750, status: "OCCUPIED" },
+    { id: "p-2", palletNumber: 2, format: "EUR_120x80", x: 20, y: 110, width: 120, length: 80, weightKg: 680, status: "OCCUPIED" },
+    { id: "p-3", palletNumber: 3, format: "EUR_120x80", x: 150, y: 20, width: 120, length: 80, weightKg: 820, status: "OCCUPIED" },
+    { id: "p-4", palletNumber: 4, format: "EUR_120x80", x: 150, y: 110, width: 120, length: 80, weightKg: 710, status: "OCCUPIED" },
+    { id: "p-5", palletNumber: 5, format: "ISO_100x120", x: 280, y: 20, width: 100, length: 120, weightKg: 950, status: "FREE" },
+  ]);
+  const [collisionWarning, setCollisionWarning] = useState<string | null>(null);
+
+  const currentVehicleDimensions = {
+    lengthCm: stepLengthCm || 1360,
+    widthCm: stepWidthCm || 245,
+    heightCm: stepHeightCm || 270,
+    maxPayloadKg: stepMaxPayloadKg || 24000,
+  };
+
+  const payloadSummary = calculateTotalPayload(precisionPallets, currentVehicleDimensions.maxPayloadKg);
+
+  const handleAddPalletAt = (xCm: number, yCm: number) => {
+    const spec = STANDARD_PALLETS[activeFormatTool] || STANDARD_PALLETS.EUR_120x80;
+    const newP: PrecisionPallet = {
+      id: `p-${Date.now()}`,
+      palletNumber: precisionPallets.length + 1,
+      format: activeFormatTool,
+      x: Math.max(0, Math.min(xCm, currentVehicleDimensions.lengthCm - spec.width)),
+      y: Math.max(0, Math.min(yCm, currentVehicleDimensions.widthCm - spec.length)),
+      width: spec.width,
+      length: spec.length,
+      weightKg: spec.defaultWeightKg,
+      status: "OCCUPIED",
+    };
+
+    const check = canPlacePallet(precisionPallets, newP, currentVehicleDimensions);
+    if (!check.allowed) {
+      setCollisionWarning(check.reason || "Coliziune / Suprapunere detectată!");
+      setTimeout(() => setCollisionWarning(null), 3000);
+      return;
+    }
+
+    setCollisionWarning(null);
+    setPrecisionPallets((prev) => [...prev, newP]);
+  };
+
+  const handleCompleteWizard = () => {
+    if (!stepGpsTrackerId.trim()) {
+      alert("Introduceți identificatorul dispozitivului GPS.");
+      return;
+    }
+
+    const newId = `vh-${Date.now()}`;
+    const newVh: FleetVehicle = {
+      id: newId,
+      plate: stepPlate || "CAN 777",
+      model: stepModel || "Mercedes-Benz Actros",
+      vehicleType: stepType,
+      carrierName: stepCarrier,
+      driverName: stepDriver || "Șofer Desemnat",
+      driverPhone: stepPhone || "+373 69 000 000",
+      pricePerKm: stepPricePerKm || 18.5,
+      hasConditioner: stepHasReefer,
+      totalPallets: stepTotalPallets || 33,
+      occupiedPallets: 0,
+      gpsSensorId: stepGpsTrackerId,
+      isVerifiedANTA: true,
+      destinationScope: "INTERN",
+      currentRoute: "Chișinău ➔ Rezina",
+      status: "AVAILABLE",
+    };
+
+    setFleet((prev) => [newVh, ...prev]);
+
+    // Sincronizare cu localStorage pentru hartă (Prompt K6)
+    try {
+      const existing = localStorage.getItem("optifleet_available_trucks");
+      const currentList = existing ? JSON.parse(existing) : [];
+      const mapTruck = {
+        id: newId,
+        plate: newVh.plate,
+        model: newVh.model,
+        vehicleType: newVh.vehicleType,
+        carrierName: newVh.carrierName,
+        carrierPhone: newVh.driverPhone,
+        driverName: newVh.driverName,
+        pricePerKm: newVh.pricePerKm,
+        hasConditioner: newVh.hasConditioner,
+        totalPallets: newVh.totalPallets,
+        freePallets: newVh.totalPallets,
+        isVerifiedANTA: true,
+        gpsTrackerId: newVh.gpsSensorId,
+        currentRaion: "chisinau",
+        destinationScope: "INTERN",
+        availableNow: true,
+        speedKmH: 74,
+        fuelLevelPercent: 92,
+        lat: 47.025 + (Math.random() - 0.5) * 0.04,
+        lon: 28.85 + (Math.random() - 0.5) * 0.04,
+        layoutOrientation: "2_WIDE",
+      };
+      localStorage.setItem("optifleet_available_trucks", JSON.stringify([mapTruck, ...currentList]));
+    } catch {}
+
+    setIsWizardOpen(false);
+  };
+
+  const totalSlotsCount = layoutOrientation === "3_LONG" ? 33 : 26;
+  const totalOccupiedCount = palletSlots.slice(0, totalSlotsCount).filter(Boolean).length;
   const maxPayloadKg = 24000;
-  const weightPercentage = Math.round((totalLoadedWeightKg / maxPayloadKg) * 100);
+  const totalLoadedWeightKg = totalOccupiedCount * palletWeightKg;
 
-  // Estimare distribuție sarcini pe axe (față/spate)
-  const frontSlots = palletSlots.slice(0, Math.floor(totalSlotsCount / 2)).filter(Boolean).length;
-  const rearSlots = palletSlots.slice(Math.floor(totalSlotsCount / 2)).filter(Boolean).length;
-  const frontWeightRatio = totalOccupiedCount > 0 ? Math.round((frontSlots / totalOccupiedCount) * 100) : 50;
-  const isAxleBalanced = frontWeightRatio >= 40 && frontWeightRatio <= 60;
+  // Distribuție greutate față / spate
+  const halfSlots = Math.floor(totalSlotsCount / 2);
+  const frontOccupied = palletSlots.slice(0, halfSlots).filter(Boolean).length;
+  const frontWeightRatio = totalOccupiedCount > 0 
+    ? Math.round((frontOccupied / totalOccupiedCount) * 100) 
+    : 50;
+  const isAxleBalanced = Math.abs(frontWeightRatio - 50) <= 15;
 
-  const togglePalletSlot = (index: number) => {
+  const togglePalletSlot = (idx: number) => {
     setPalletSlots((prev) => {
-      const next = [...prev];
-      next[index] = !next[index];
-      return next;
+      const copy = [...prev];
+      copy[idx] = !copy[idx];
+      return copy;
     });
+  };
+
+  const balancePalletsZigZag = () => {
+    setPalletSlots((prev) =>
+      prev.map((_, i) => i % 2 === 0)
+    );
   };
 
   const fillAllPallets = () => {
@@ -193,44 +344,6 @@ export default function FleetPage() {
 
   const clearAllPallets = () => {
     setPalletSlots(Array(33).fill(false));
-  };
-
-  const balancePalletsZigZag = () => {
-    // Umplere echilibrată față-spate alternativ
-    const next = Array(33).fill(false);
-    for (let i = 0; i < 20; i++) {
-      if (i % 2 === 0) {
-        next[Math.floor(i / 2)] = true; // Față
-      } else {
-        next[32 - Math.floor(i / 2)] = true; // Spate
-      }
-    }
-    setPalletSlots(next);
-  };
-
-  const handleSaveVehicle = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newVh: FleetVehicle = {
-      id: `vh-${Date.now()}`,
-      plate: formPlate || "CAN 999",
-      model: formModel || "Autovehicul Marfă",
-      vehicleType: formType,
-      carrierName: formCarrier,
-      driverName: formDriver || "Șofer Alocat",
-      driverPhone: formPhone || "+373 69 111 222",
-      pricePerKm: Number(formPrice),
-      hasConditioner: formConditioner,
-      totalPallets: formType === "MACHINERY_LOWBED" ? 0 : Number(formPallets),
-      occupiedPallets: 0,
-      gpsSensorId: formGps,
-      isVerifiedANTA: true,
-      destinationScope: formScope,
-      currentRoute: formRoute,
-      status: "AVAILABLE",
-    };
-
-    setFleet((prev) => [newVh, ...prev]);
-    setIsModalOpen(false);
   };
 
   const filteredFleet = fleet.filter((vh) => {
@@ -285,15 +398,13 @@ export default function FleetPage() {
 
             <button
               onClick={() => {
-                setFormPlate("");
-                setFormModel("");
-                setFormType("SEMI_CURTAINSIDE_33");
-                setFormGps(`GPS-TK-${Math.floor(1000 + Math.random() * 9000)}`);
-                setIsModalOpen(true);
+                setWizardStep(1);
+                setIsWizardOpen(true);
               }}
-              className="btn-primary text-xs"
+              className="btn-primary text-xs flex items-center gap-1.5"
             >
-              + Adaugă Vehicul Nou
+              <Plus className="w-4 h-4" />
+              <span>Constructor Vehicul</span>
             </button>
           </div>
         </div>
@@ -685,168 +796,382 @@ export default function FleetPage() {
           </div>
         )}
 
-        {/* ─── MODAL ADĂUGARE VEHICUL NOU ─────────────────────────────────── */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 className="font-bold text-lg text-slate-900">Înregistrare Vehicul Nou în Flotă</h3>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-700 text-lg font-bold"
-                >
-                  ✕
-                </button>
+        {/* ─── PROMPT K6: BUTON MARE CIRCULAR CU "+" ─── */}
+        <button
+          onClick={() => {
+            setWizardStep(1);
+            setIsWizardOpen(true);
+          }}
+          title="Constructor Vehicul Nou (4 Pași)"
+          className="fixed bottom-8 right-8 w-16 h-16 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center hover:scale-108 transition-all z-30 group cursor-pointer border-2 border-white focus:outline-none focus:ring-4 focus:ring-blue-300"
+        >
+          <Plus className="w-8 h-8 group-hover:rotate-90 transition-transform duration-300" />
+        </button>
+
+        {/* ─── PROMPT K6: CONSTRUCTOR VEHICUL ÎN 4 PAȘI (STEPPER) ─── */}
+        {isWizardOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col my-8">
+              {/* Header Wizard cu Stepper Tabs */}
+              <div className="p-5 border-b border-slate-200 bg-slate-50">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-xs">
+                      +
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-sm text-slate-900">
+                        Constructor Vehicul Nou · Flotă B2B
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Pasul {wizardStep} din 4:{" "}
+                        {wizardStep === 1
+                          ? "Identificare & Șasiu"
+                          : wizardStep === 2
+                          ? "Caroserie & Echipare"
+                          : wizardStep === 3
+                          ? "Dimensiuni & Sarcină Utilă"
+                          : "Conectivitate Telematică GPS"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsWizardOpen(false)}
+                    className="w-8 h-8 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Stepper Progres Pills */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { step: 1, label: "1. Marcă & Model" },
+                    { step: 2, label: "2. Caroserie" },
+                    { step: 3, label: "3. Capacitate" },
+                    { step: 4, label: "4. GPS & ANTA" },
+                  ].map((item) => (
+                    <div
+                      key={item.step}
+                      className={`py-1.5 px-2 rounded-md text-[11px] font-semibold text-center transition-all ${
+                        wizardStep === item.step
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : wizardStep > item.step
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-white text-slate-400 border border-slate-200"
+                      }`}
+                    >
+                      {wizardStep > item.step ? `✓ ${item.label.split(". ")[1]}` : item.label}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <form onSubmit={handleSaveVehicle} className="mt-4 flex flex-col gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Număr Înmatriculare (MD/RO):
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="CAN 001"
-                      value={formPlate}
-                      onChange={(e) => setFormPlate(e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold uppercase focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
+              {/* Corpul Pasului Activ */}
+              <div className="p-5 flex flex-col gap-4">
+                {/* PASUL 1: Marcă, Model, Număr Înmatriculare, Șofer */}
+                {wizardStep === 1 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Număr Înmatriculare: *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="CAN 001 / BLL 450"
+                          value={stepPlate}
+                          onChange={(e) => setStepPlate(e.target.value.toUpperCase())}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold uppercase focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Marcă & Model Vehicul: *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Mercedes-Benz Actros 1845 / Scania R500"
+                          value={stepModel}
+                          onChange={(e) => setStepModel(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Model / Șasiu:
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Mercedes Actros / Scania R500"
-                      value={formModel}
-                      onChange={(e) => setFormModel(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Nume Șofer:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ion Popescu"
+                          value={stepDriver}
+                          onChange={(e) => setStepDriver(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Telefon Contact Șofer:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+373 69 112 334"
+                          value={stepPhone}
+                          onChange={(e) => setStepPhone(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tip Remorcă / Caroserie:
-                  </label>
-                  <select
-                    value={formType}
-                    onChange={(e) => {
-                      const t = e.target.value as VehicleBlueprintType;
-                      setFormType(t);
-                      if (t === "MACHINERY_LOWBED") setFormPallets(0);
-                      else if (t === "VAN_CARGO_4") setFormPallets(4);
-                      else if (t === "RIGID_BOX_18") setFormPallets(18);
-                      else if (t === "ROAD_TRAIN_40") setFormPallets(40);
-                      else setFormPallets(33);
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Companie Transportatoare:
+                      </label>
+                      <input
+                        type="text"
+                        value={stepCarrier}
+                        onChange={(e) => setStepCarrier(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* PASUL 2: Tip Caroserie */}
+                {wizardStep === 2 && (
+                  <div className="flex flex-col gap-3">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Selectați Tipul Remorcii / Suprastructurii:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {[
+                        {
+                          id: "SEMI_CURTAINSIDE_33" as const,
+                          name: "TIR Semiremorcă Prelată",
+                          desc: "13.6m · 33 Euro-Paleți Standard",
+                          pallets: 33,
+                        },
+                        {
+                          id: "SEMI_REEFER_33" as const,
+                          name: "Semiremorcă Frigorifică",
+                          desc: "-20°C / +4°C · Schmitz / Krone",
+                          pallets: 33,
+                        },
+                        {
+                          id: "MACHINERY_LOWBED" as const,
+                          name: "Trailă Utilaje / Mașini Mari",
+                          desc: "Platformă joasă agabaritică",
+                          pallets: 0,
+                        },
+                        {
+                          id: "ROAD_TRAIN_40" as const,
+                          name: "Tren Rutier Tandem",
+                          desc: "2 remorci · 40 Euro-Paleți",
+                          pallets: 40,
+                        },
+                        {
+                          id: "RIGID_BOX_18" as const,
+                          name: "Camion Rigid Solo cu Lift",
+                          desc: "Distribuție urbană / regională",
+                          pallets: 18,
+                        },
+                        {
+                          id: "VAN_CARGO_4" as const,
+                          name: "Dubă 3.5t Express",
+                          desc: "4 Euro-Paleți · Tranzit rapid",
+                          pallets: 4,
+                        },
+                      ].map((opt) => (
+                        <div
+                          key={opt.id}
+                          onClick={() => {
+                            setStepType(opt.id);
+                            setStepTotalPallets(opt.pallets);
+                          }}
+                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                            stepType === opt.id
+                              ? "border-blue-600 bg-blue-50/50 shadow-xs"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
+                        >
+                          <div className="font-bold text-xs text-slate-900">{opt.name}</div>
+                          <div className="text-[11px] text-slate-500 mt-1">{opt.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Previzualizare CAD schiță */}
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col items-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Schiță Tehnică Schelet:
+                      </span>
+                      <VehicleBlueprintSVG type={stepType} hasConditioner={stepHasReefer} className="w-full h-24" />
+                    </div>
+                  </div>
+                )}
+
+                {/* PASUL 3: Dimensiuni Interioare, Sarcina Maximă, Preț per KM (K12) */}
+                {wizardStep === 3 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Lungime Interior (cm):
+                        </label>
+                        <input
+                          type="number"
+                          value={stepLengthCm}
+                          onChange={(e) => setStepLengthCm(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Lățime Interior (cm):
+                        </label>
+                        <input
+                          type="number"
+                          value={stepWidthCm}
+                          onChange={(e) => setStepWidthCm(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Înălțime Utilă (cm):
+                        </label>
+                        <input
+                          type="number"
+                          value={stepHeightCm}
+                          onChange={(e) => setStepHeightCm(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Sarcină Maximă (kg):
+                        </label>
+                        <input
+                          type="number"
+                          value={stepMaxPayloadKg}
+                          onChange={(e) => setStepMaxPayloadKg(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Capacitate Paleți:
+                        </label>
+                        <input
+                          type="number"
+                          value={stepTotalPallets}
+                          onChange={(e) => setStepTotalPallets(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        {/* PROMPT K12: Preț per km configurabil */}
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Tarif Bază per KM (MDL):
+                        </label>
+                        <input
+                          type="number"
+                          step={0.5}
+                          value={stepPricePerKm}
+                          onChange={(e) => setStepPricePerKm(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold text-blue-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg text-[11px] text-slate-700">
+                      💡 <strong>Tariful per km ({stepPricePerKm} MDL/km)</strong> va fi utilizat la Prompt K12 ca bază automată pentru calculul costului de transport estimat la negocierea contractelor B2B.
+                    </div>
+                  </div>
+                )}
+
+                {/* PASUL 4: Conectare Dispozitiv GPS Telematic */}
+                {wizardStep === 4 && (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Identificator Unic Dispozitiv GPS (IMEI / Tracker ID): *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Teltonika FMB920-884192 / TK103"
+                        value={stepGpsTrackerId}
+                        onChange={(e) => setStepGpsTrackerId(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Protocol Telematic Suportat:
+                      </label>
+                      <select
+                        value={stepGpsProtocol}
+                        onChange={(e) => setStepGpsProtocol(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                      >
+                        <option value="TELTONIKA_FMB920">Teltonika FMB920 / FMB640 (TCP/UDP Binary)</option>
+                        <option value="CONCOX_GT06">Concox GT06 / WeTrack (TCP Text)</option>
+                        <option value="API_WIALON">Conexiune directă API Wialon / FleetComplete</option>
+                      </select>
+                    </div>
+
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-ping shrink-0" />
+                      <span>
+                        La salvare, vehiculul se va conecta la serverul Axum/Rust prin canalul <code>/ws/vehicle/:id</code> și va apărea instantaneu pe harta Moldovei cu pictograma de locator și paleți!
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Navigare Stepper */}
+              <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    if (wizardStep > 1) setWizardStep((prev) => (prev - 1) as any);
+                    else setIsWizardOpen(false);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  {wizardStep === 1 ? "Anulează" : "← Pasul Anterior"}
+                </button>
+
+                {wizardStep < 4 ? (
+                  <button
+                    onClick={() => {
+                      if (wizardStep === 1 && (!stepPlate || !stepModel)) {
+                        alert("Completați numărul de înmatriculare și modelul vehiculului.");
+                        return;
+                      }
+                      setWizardStep((prev) => (prev + 1) as any);
                     }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-blue-600"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors"
                   >
-                    <option value="SEMI_CURTAINSIDE_33">TIR Semiremorcă Prelată (13.6m · 33 Euro-Paleți)</option>
-                    <option value="SEMI_REEFER_33">Semiremorcă Frigorifică (-20°C / +4°C · 33 Euro-Paleți)</option>
-                    <option value="MACHINERY_LOWBED">Trailă Utilaje Grele / Mașini Mari (Agabaritic 45t)</option>
-                    <option value="ROAD_TRAIN_40">Tren Rutier Tandem (2 Remorci · 40 Euro-Paleți)</option>
-                    <option value="RIGID_BOX_18">Camion Rigid Solo cu Lift Hidraulic (18 Euro-Paleți)</option>
-                    <option value="VAN_CARGO_4">Dubă / Furgonetă Express 3.5t (4 Euro-Paleți)</option>
-                  </select>
-                </div>
-
-                {/* Previzualizare Schiță CAD */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <span className="text-[10px] font-bold text-slate-400 block mb-1">PREVIZUALIZARE CAD:</span>
-                  <VehicleBlueprintSVG type={formType} hasConditioner={formConditioner} className="w-full h-24" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Tarif per KM (MDL):
-                    </label>
-                    <input
-                      type="number"
-                      step={0.5}
-                      required
-                      value={formPrice}
-                      onChange={(e) => setFormPrice(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      ID Senzor Telematic GPS:
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formGps}
-                      onChange={(e) => setFormGps(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Nume Șofer:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ion Rusu"
-                      value={formDriver}
-                      onChange={(e) => setFormDriver(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Telefon Șofer:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="+373 69 000 000"
-                      value={formPhone}
-                      onChange={(e) => setFormPhone(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={formConditioner}
-                      onChange={(e) => setFormConditioner(e.target.checked)}
-                      className="rounded accent-blue-600"
-                    />
-                    <span>Agregat Frigorific Activ</span>
-                  </label>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                      Anulează
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs"
-                    >
-                      Salvează Vehiculul
-                    </button>
-                  </div>
-                </div>
-              </form>
+                    <span>Continuă spre Pasul {wizardStep + 1}</span>
+                    <span>→</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleCompleteWizard}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>✓ Finalizează și Conectează la Hartă</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -69,6 +69,50 @@ export function validateMoldovaIdno(idno: string): IdnoValidationResult {
 }
 
 /**
+ * Detectează forma juridică a entității din denumire sau IDNO (Prompt K12).
+ * SRL (Societate cu Răspundere Limitată) / Î.I. (Întreprindere Individuală) / S.A. (Societate pe Acțiuni).
+ */
+export function detectLegalForm(
+  companyName: string = "",
+  idno: string = ""
+): "SRL" | "II" | "SA" | "ALTA" {
+  const upper = companyName.toUpperCase().trim();
+  if (upper.includes("SRL") || upper.includes("S.R.L.")) return "SRL";
+  if (upper.includes("Î.I.") || upper.includes("II") || upper.includes("I.I.") || upper.includes("INDIVIDUAL")) return "II";
+  if (upper.includes("S.A.") || upper.includes("SA")) return "SA";
+
+  // Dacă nu este specificat în nume, verificăm dacă este înregistrat ca persoană juridică generală
+  if (idno.startsWith("1002") || idno.startsWith("1004")) return "II";
+  if (idno.startsWith("1003") || idno.startsWith("1005")) return "SRL";
+
+  return "SRL";
+}
+
+/**
+ * Extrage profilul legal complet al companiei pentru auto-populare în contracte și KYC (Prompt K12)
+ */
+export function getCompanyLegalProfile(idno: string, companyName: string = "") {
+  const validation = validateMoldovaIdno(idno);
+  const legalForm = detectLegalForm(companyName, idno);
+  const legalFormLabels: Record<string, string> = {
+    SRL: "Societate cu Răspundere Limitată (S.R.L.)",
+    II: "Întreprindere Individuală (Î.I.)",
+    SA: "Societate pe Acțiuni (S.A.)",
+    ALTA: "Entitate Economică Înregistrată",
+  };
+
+  return {
+    idno: validation.idno || idno,
+    isValid: validation.isValid,
+    issuedYear: validation.issuedYear,
+    legalForm,
+    legalFormDescription: legalFormLabels[legalForm] || legalFormLabels.SRL,
+    companyName: companyName || (legalForm === "II" ? "Transport Individual Î.I." : "Logistica Nord SRL"),
+    jurisdiction: "Republica Moldova (ASP)",
+  };
+}
+
+/**
  * Formatează IDNO-ul cu spații pentru lizibilitate (ex: 1003 6000 1234 5)
  */
 export function formatIdno(idno: string): string {

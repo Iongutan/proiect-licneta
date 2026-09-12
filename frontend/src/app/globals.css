@@ -419,5 +419,47 @@ body {
   background: #2563eb;
 }
 
+/* ─── Regional Macro Clusters (Prompt K3: Zoom < 8) ─────────────────── */
+.regional-cluster-marker {
+  background: transparent !important;
+  border: none !important;
+}
 
+.regional-cluster-badge {
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  color: #0f172a;
+  border-radius: 9999px;
+  padding: 6px 14px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.18);
+  font-weight: 700;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
 
+.regional-cluster-badge:hover {
+  transform: scale(1.06);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.28);
+  border-color: #1d4ed8;
+}
+
+.regional-cluster-count {
+  background: #2563eb;
+  color: #ffffff;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.regional-cluster-sub {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 500;
+}
