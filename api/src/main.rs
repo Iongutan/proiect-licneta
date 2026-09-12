@@ -1,7 +1,13 @@
 // OptiFleet B2B — Rust API main.rs (FULL — cu module + server)
-use axum::{Router, middleware as axum_middleware};
+use axum::{
+    Router,
+    middleware as axum_middleware,
+    http::{Method, header, HeaderValue},
+    routing::get,
+    response::IntoResponse,
+};
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     trace::TraceLayer,
     compression::CompressionLayer,
     limit::RequestBodyLimitLayer,
@@ -16,6 +22,9 @@ mod handlers;
 mod middleware;
 mod db;
 mod services;
+
+#[cfg(test)]
+mod tests;
 
 use config::settings::Settings;
 use db::{supabase::SupabaseClient, redis::RedisClient};
@@ -50,10 +59,45 @@ async fn main() {
 
     let state = AppState { settings: Arc::clone(&settings), supabase, redis, ml_client };
 
-    let cors = CorsLayer::new()
-        .allow_methods(Any)
-        .allow_headers(Any)
-        .allow_origin(Any);
+    // PROMPT J2: Restricționare strictă CORS pe baza mediului
+    // Elimină complet allow_origin(Any) și permite doar origini autorizate
+    let allowed_methods = vec![
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::DELETE,
+        Method::OPTIONS,
+        Method::PATCH,
+    ];
+
+    let allowed_headers = vec![
+        header::AUTHORIZATION,
+        header::CONTENT_TYPE,
+        header::ACCEPT,
+        header::COOKIE,
+        header::HeaderName::from_static("x-requested-with"),
+    ];
+
+    let mut cors = CorsLayer::new()
+        .allow_methods(allowed_methods)
+        .allow_headers(allowed_headers)
+        .allow_credentials(true);
+
+    if state.settings.is_development() {
+        let dev_origins = [
+            "http://localhost:3000".parse::<HeaderValue>().unwrap(),
+            "http://127.0.0.1:3000".parse::<HeaderValue>().unwrap(),
+        ];
+        cors = cors.allow_origin(dev_origins);
+    } else {
+        let prod_origins: Vec<HeaderValue> = state
+            .settings
+            .cors_allowed_origins
+            .iter()
+            .filter_map(|o| o.parse::<HeaderValue>().ok())
+            .collect();
+        cors = cors.allow_origin(prod_origins);
+    }
 
     let app = Router::new()
         .nest("/api/v1/auth",     handlers::auth::router())
@@ -63,6 +107,8 @@ async fn main() {
         .nest("/api/v1/clusters", handlers::clusters::router())
         .nest("/api/v1/chat",     handlers::chat::router())
         .nest("/ws",              handlers::websocket::router())
+        // PROMPT J9: Observabilitate — Prometheus Metrics Endpoint
+        .route("/metrics",        get(metrics_endpoint))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::rate_limit::rate_limit,
@@ -79,3 +125,25 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
+
+/// Endpoint Prometheus metrics pentru observabilitate (PROMPT J9)
+async fn metrics_endpoint(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> impl IntoResponse {
+    let body = format!(
+        "# HELP optifleet_app_info Informații despre versiune și mediu de execuție\n\
+         # TYPE optifleet_app_info gauge\n\
+         optifleet_app_info{{version=\"1.0.0\",environment=\"{}\"}} 1\n\
+         # HELP optifleet_rate_limit_per_minute Valoarea de rate limiting activă\n\
+         # TYPE optifleet_rate_limit_per_minute gauge\n\
+         optifleet_rate_limit_per_minute {}\n",
+        state.settings.environment,
+        state.settings.rate_limit_per_minute,
+    );
+
+    (
+        [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        body,
+    )
+}
+

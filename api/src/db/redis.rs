@@ -5,7 +5,7 @@
 // - Cache matrice OSRM
 
 use fred::prelude::*;
-use fred::interfaces::{KeysInterface, PubsubInterface};
+use fred::interfaces::{KeysInterface, PubsubInterface, EventInterface};
 use crate::errors::ApiError;
 
 #[derive(Clone)]
@@ -34,6 +34,11 @@ impl RedisClient {
         Ok(Self { pool })
     }
 
+    /// Receiver pentru mesaje Pub/Sub (GPS broadcast la scară)
+    pub fn message_rx(&self) -> tokio::sync::broadcast::Receiver<fred::types::Message> {
+        self.pool.next().message_rx()
+    }
+
     /// Increment atomic cu TTL — pentru rate limiting sliding window
     pub async fn increment_with_ttl(&self, key: &str, ttl_sec: u64) -> Result<i64, ApiError> {
         // Pipeline: INCR + EXPIRE atomic
@@ -58,8 +63,15 @@ impl RedisClient {
 
     /// Subscribe la canal
     pub async fn subscribe(&self, channel: &str) -> Result<(), ApiError> {
-        self.pool.next().subscribe(channel).await
+        let _: () = self.pool.next().subscribe(channel).await
             .map_err(|e| ApiError::Internal(format!("Redis SUBSCRIBE: {e}")))?;
+        Ok(())
+    }
+
+    /// Unsubscribe de la canal
+    pub async fn unsubscribe(&self, channel: &str) -> Result<(), ApiError> {
+        let _: () = self.pool.next().unsubscribe(channel).await
+            .map_err(|e| ApiError::Internal(format!("Redis UNSUBSCRIBE: {e}")))?;
         Ok(())
     }
 

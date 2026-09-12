@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/supabase";
+import { apiClient } from "@/lib/api-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,7 +59,8 @@ export default function LoginPage() {
       try {
         const res = await signIn(email, password);
         if (res?.session?.access_token) {
-          localStorage.setItem("optifleet_token", res.session.access_token);
+          // PROMPT J4: Token ținut în memorie JS, nu în localStorage
+          apiClient.setToken(res.session.access_token);
         }
       } catch {
         // Mod offline securizat

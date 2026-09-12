@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     OptiFleetError, AIModelError, RoutingEngineError, ClusteringError
 )
-from app.api.v1 import clustering, optimization, ai_chat
+from app.api.v1 import clustering, optimization, ai_chat, tasks
 
 
 @asynccontextmanager
@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(clustering.router, prefix=prefix)
     app.include_router(optimization.router, prefix=prefix)
     app.include_router(ai_chat.router, prefix=prefix)
+    app.include_router(tasks.router, prefix=prefix)
 
     @app.get("/health")
     async def health():

@@ -142,6 +142,115 @@ services:
     networks:
       - optifleet-external
 
+  # ─────────────────────────────────────────────────────────────────
+  # Python ML Background Worker — DBSCAN & CVRP Task Queue (PROMPT J5)
+  # Scalabil orizontal: docker compose up --scale ml_worker=4
+  # ─────────────────────────────────────────────────────────────────
+  ml_worker:
+    build:
+      context: ./ml_service
+      dockerfile: Dockerfile
+    command: python worker.py
+    env_file:
+      - ./ml_service/.env
+    environment:
+      OSRM_BASE_URL: http://osrm:5000
+      REDIS_URL: redis://redis:6379
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./ml_service:/app
+    depends_on:
+      - redis
+      - osrm
+    restart: unless-stopped
+    networks:
+      - optifleet-internal
+
+  # ─────────────────────────────────────────────────────────────────
+  # Redis Replica — High Availability Read Node (PROMPT J7)
+  # ─────────────────────────────────────────────────────────────────
+  redis_replica:
+    image: redis:7-alpine
+    container_name: optifleet-redis-replica
+    command: redis-server --replicaof redis 6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - optifleet-internal
+
+  # ─────────────────────────────────────────────────────────────────
+  # OSRM Replica — Redundant Routing Machine (PROMPT J8)
+  # ─────────────────────────────────────────────────────────────────
+  osrm_replica:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: optifleet-osrm-replica
+    volumes:
+      - ./osrm/data:/data
+    command: >
+      osrm-routed
+      --algorithm mld
+      --max-table-size 10000
+      /data/moldova-latest.osrm
+    restart: unless-stopped
+    networks:
+      - optifleet-internal
+
+  # ─────────────────────────────────────────────────────────────────
+  # PgBouncer — High-concurrency Connection Pooler (PROMPT J6)
+  # ─────────────────────────────────────────────────────────────────
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: optifleet-pgbouncer
+    environment:
+      DB_USER: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_HOST: ${POSTGRES_HOST:-host.docker.internal}
+      DB_PORT: 5432
+      DB_NAME: postgres
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 10000
+      DEFAULT_POOL_SIZE: 50
+    ports:
+      - "6432:5432"
+    restart: unless-stopped
+    networks:
+      - optifleet-internal
+
+  # ─────────────────────────────────────────────────────────────────
+  # Observabilitate: Prometheus Metrics Scraper (PROMPT J9)
+  # ─────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: optifleet-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - optifleet-internal
+      - optifleet-external
+
+  # ─────────────────────────────────────────────────────────────────
+  # Observabilitate: Grafana Dashboards & Alerting (PROMPT J9)
+  # ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: optifleet-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - optifleet-external
+
 # ─── Rețele ─────────────────────────────────────────────────────────
 networks:
   optifleet-internal:
@@ -154,3 +263,6 @@ networks:
 volumes:
   redis_data:
     driver: local
+  grafana_data:
+    driver: local
+

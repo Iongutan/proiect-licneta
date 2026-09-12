@@ -151,28 +151,80 @@ export class RemoteApiAdapter
     IClusterRepository,
     IChatService,
     IAdminRepository {
+  // PROMPT J4: Access token-ul se păstrează STRICT în memorie (variabilă JS).
+  // Refresh token-ul este securizat într-un cookie httpOnly, inaccesibil din JS.
   private token: string | null = null;
+  private isRefreshing: Promise<string | null> | null = null;
 
-  setToken(token: string) {
+  setToken(token: string | null) {
     this.token = token;
-    if (typeof window !== "undefined") localStorage.setItem("optifleet_token", token);
   }
 
   getToken(): string | null {
-    if (this.token) return this.token;
-    if (typeof window !== "undefined") this.token = localStorage.getItem("optifleet_token");
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  clearToken() {
+    this.token = null;
+  }
+
+  /**
+   * PROMPT J4: Reînnoiește access token-ul folosind cookie-ul httpOnly securizat.
+   * Endpoint-ul /api/v1/auth/refresh citește automat cookie-ul httpOnly și emite un nou token.
+   */
+  async refreshAccessToken(): Promise<string | null> {
+    if (this.isRefreshing) {
+      return this.isRefreshing;
+    }
+
+    this.isRefreshing = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // trimite cookie-ul httpOnly refresh_token
+        });
+
+        if (!response.ok) {
+          this.token = null;
+          return null;
+        }
+
+        const data = await response.json();
+        if (data.access_token) {
+          this.token = data.access_token;
+          return data.access_token;
+        }
+        return null;
+      } catch (err) {
+        console.warn("Autorefresh token failed:", err);
+        return null;
+      } finally {
+        this.isRefreshing = null;
+      }
+    })();
+
+    return this.isRefreshing;
+  }
+
+  private async request<T>(endpoint: string, options: RequestInit = {}, isRetry: boolean = false): Promise<T> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = this.getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
+      credentials: "include", // suport pentru cookies securizate
       headers: { ...headers, ...(options.headers as Record<string, string>) },
     });
+
+    if (response.status === 401 && !isRetry && !endpoint.includes("/auth/")) {
+      // Token expirat — încearcă reînnoirea transparentă via cookie httpOnly
+      const newToken = await this.refreshAccessToken();
+      if (newToken) {
+        return this.request<T>(endpoint, options, true);
+      }
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: { message: "Request failed" } }));
@@ -677,6 +729,22 @@ export class SmartServiceProxy
       localStorage.setItem("optifleet_app_mode", mode);
     }
     this.notifyListeners();
+  }
+
+  setToken(token: string | null) {
+    this.remote.setToken(token);
+  }
+
+  getToken(): string | null {
+    return this.remote.getToken();
+  }
+
+  clearToken() {
+    this.remote.clearToken();
+  }
+
+  async refreshAccessToken(): Promise<string | null> {
+    return this.remote.refreshAccessToken();
   }
 
   getMode() {

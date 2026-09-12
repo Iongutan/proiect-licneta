@@ -1,0 +1,16 @@
+# OptiFleet B2B — Prometheus Configuration (PROMPT J9)
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Metrici Rust API (Axum gateway)
+  - job_name: 'optifleet-api'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['api:8000']
+
+  # Metrici Nginx Load Balancer
+  - job_name: 'optifleet-nginx'
+    static_configs:
+      - targets: ['nginx:80']

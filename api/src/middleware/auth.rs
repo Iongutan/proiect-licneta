@@ -69,11 +69,16 @@ pub async fn require_auth(
     let token = extract_bearer_token(&request)?;
     let secret = std::env::var("SECRET_KEY")
         .or_else(|_| std::env::var("SUPABASE_JWT_SECRET"))
-        .unwrap_or_else(|_| "secret".into());
-    let claims = verify_token(&token, &secret)?;
+        .map_err(|_| ApiError::Internal("Server security configuration error: Missing SECRET_KEY".into()))?;
+
+    if secret.trim().len() < 32 {
+        return Err(ApiError::Internal("Server security configuration error: Insecure SECRET_KEY (min 32 chars required)".into()));
+    }
+
+    let claims = verify_token(&token, secret.trim())?;
 
     if !claims.r#type.is_empty() && claims.r#type != "access" && claims.r#type != "authenticated" {
-        return Err(ApiError::Unauthorized("Invalid token type".into()));
+        return Err(ApiError::Unauthorized("Invalid token type: expected access token".into()));
     }
 
     // Injectează claims în request pentru handlers
@@ -98,12 +103,16 @@ pub fn extract_bearer_token(request: &Request) -> Result<String, ApiError> {
 
 /// Verifică semnătura și expiratia JWT
 pub fn verify_token(token: &str, secret: &str) -> Result<Claims, ApiError> {
+    if secret.trim().len() < 32 {
+        return Err(ApiError::Internal("Verification key too short (min 32 chars required)".into()));
+    }
+
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
     decode::<Claims>(
         token,
-        &DecodingKey::from_secret(secret.as_bytes()),
+        &DecodingKey::from_secret(secret.trim().as_bytes()),
         &validation,
     )
     .map(|data| data.claims)
@@ -114,3 +123,18 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims, ApiError> {
         _ => ApiError::Unauthorized(format!("Invalid token: {}", e)),
     })
 }
+
+/// Creare token JWT semnat cu cheia secretă
+pub fn create_token(claims: &Claims, secret: &str) -> Result<String, ApiError> {
+    if secret.trim().len() < 32 {
+        return Err(ApiError::Internal("Signing key too short (min 32 chars required)".into()));
+    }
+
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.trim().as_bytes()),
+    )
+    .map_err(|e| ApiError::Internal(format!("Failed to create token: {}", e)))
+}
+

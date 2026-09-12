@@ -119,39 +119,55 @@ async fn handle_driver_ws(socket: WebSocket, state: AppState, vehicle_id: Uuid) 
     tracing::info!("Driver WS disconnected: vehicle {}", vehicle_id);
 }
 
-/// Handler tracker (dashboard): subscribe la Redis → trimite updates la browser
-async fn handle_tracker_ws(socket: WebSocket, _state: AppState, vehicle_id: Uuid) {
+/// Handler tracker (dashboard): subscribe la Redis Pub/Sub → trimite updates la browser
+/// PROMPT J10: Fan-out orizontal prin Redis Pub/Sub (permite scalarea API-ului cu --scale api=N)
+async fn handle_tracker_ws(socket: WebSocket, state: AppState, vehicle_id: Uuid) {
     let (mut ws_sender, ws_receiver) = socket.split();
-    let _redis_channel = format!("vehicle:location:{}", vehicle_id);
+    let redis_channel = format!("vehicle:location:{}", vehicle_id);
 
     tracing::info!("Tracker WS connected for vehicle {}", vehicle_id);
 
-    // Creează subscriber Redis dedicat acestei conexiuni
-    // Nota: în implementarea completă, folosim fred::pubsub::subscribe()
-    // Deocamdată polling la Redis pentru simplitate
-    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+    // Abonare la canalul specific al vehiculului în Redis
+    if let Err(e) = state.redis.subscribe(&redis_channel).await {
+        tracing::error!("Failed to subscribe to Redis channel {}: {}", redis_channel, e);
+    }
 
+    let mut message_rx = state.redis.message_rx();
     let mut tracker_recv = ws_receiver.fuse();
+    let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
 
     loop {
         tokio::select! {
-            // Primește update din Redis la interval
-            _ = interval.tick() => {
-                // În implementare completă: subscriber Redis push
-                // Acum: trimitem keep-alive
+            // Eveniment primit prin Redis Pub/Sub din orice instanță API
+            Ok(msg) = message_rx.recv() => {
+                if &*msg.channel == redis_channel {
+                    if let Some(text) = msg.value.as_str() {
+                        if ws_sender.send(Message::Text(text.to_string())).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+            // Keep-alive ping periodic
+            _ = ping_interval.tick() => {
                 if ws_sender.send(Message::Ping(vec![])).await.is_err() {
                     break;
                 }
             }
-            // Client a închis conexiunea
+            // Clientul a închis conexiunea
             msg = tracker_recv.next() => {
                 match msg {
                     Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(Message::Ping(data))) => {
+                        let _ = ws_sender.send(Message::Pong(data)).await;
+                    }
                     _ => {}
                 }
             }
         }
     }
 
+    // Dezabonare canal la deconectarea clientului
+    let _ = state.redis.unsubscribe(&redis_channel).await;
     tracing::info!("Tracker WS disconnected for vehicle {}", vehicle_id);
 }
