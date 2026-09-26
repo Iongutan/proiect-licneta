@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Cod din v1, nefolosit, programat pentru ștergere (README → Curățenie).
+    "src/hooks/**",
+    "src/lib/api-client.ts",
+    "src/lib/demo-data.ts",
+    "src/lib/kyc-data.ts",
+    "scripts/**",
   ]),
 ]);
 

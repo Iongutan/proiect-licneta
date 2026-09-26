@@ -48,3 +48,20 @@ acest fișier niciodată.
   pentru toți la prima deconectare.
 
 **Rămas:** decizia de arhitectură + implementarea (vezi CLAUDE.md).
+
+## 2026-09-26 (continuare) — Refacere completă v2
+**Făcut** (branch `refresh/v2`, 5 commit-uri):
+- `ml_service` → pachet `optifleet_ml` stateless: token intern, DBSCAN pe max(dist. preluare, dist. livrare) + ferestre de timp, CVRP pickup&delivery corect, intenție Qwen3 cu schemă JSON. 15 teste pytest.
+- `docker-compose.yml` redus la osrm + ml_service, porturi pe 127.0.0.1, containere read-only.
+- Schema Supabase v2 (`supabase/sql/`), testată în Docker (`supabase/tests/run.sh`, `api-contract.sh`).
+- Frontend refăcut: auth SSR, CSP cu nonce, hartă K2–K5, flotă K6–K7, cereri + bursă + grupaj, contracte K8–K12, admin KYC.
+- Documentație rescrisă: README, MANUAL_DE_PORNIRE, SECURITATE_SI_DATE_PERSONALE.
+
+**Rămas:**
+- Utilizatorul rulează SQL-ul în proiectul Supabase și setează Auth + adminul.
+- Utilizatorul șterge fișierele v1 (ștergerea cu `git rm` a fost refuzată de clasificatorul de siguranță).
+- Paginile cu login nu au fost văzute vizual pe date reale (fără migrații în cloud); datele și apelurile sunt însă acoperite de testul de contract.
+
+**Atenționări:**
+- Tokenul intern ML a fost generat și scris în `ml_service/.env` și `frontend/.env.local` (neversionate).
+- `ml_service/.env` mai conține cheile Supabase vechi, acum nefolosite; pot fi șterse de acolo.

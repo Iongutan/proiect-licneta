@@ -1,26 +1,21 @@
 {
   "name": "optifleet-b2b",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "OptiFleet B2B — Platformă Inteligentă de Logistică pentru IMM-uri din Moldova (UTM FCIM)",
+  "description": "OptiFleet B2B — bursă de transport marfă pentru IMM-urile din Republica Moldova (UTM FCIM)",
   "scripts": {
-    "dev": "docker compose up -d && npm --prefix frontend run dev",
-    "start": "docker compose up -d && npm --prefix frontend start",
+    "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
-    "stop": "docker compose down",
+    "start": "npm --prefix frontend start",
     "services:up": "docker compose up -d",
     "services:down": "docker compose down",
     "services:logs": "docker compose logs -f",
-    "test": "npm --prefix frontend run lint"
+    "stop": "docker compose down",
+    "test": "npm --prefix frontend test && npm --prefix frontend run typecheck && npm --prefix frontend run lint",
+    "test:db": "bash supabase/tests/run.sh",
+    "test:api": "bash supabase/tests/api-contract.sh",
+    "test:ml": "docker compose run --rm ml_service python -m pytest -q"
   },
-  "keywords": [
-    "logistics",
-    "optifleet",
-    "moldova",
-    "cvrp",
-    "routing",
-    "b2b"
-  ],
   "author": "Ion Guțan (TI-233)",
   "license": "MIT"
 }

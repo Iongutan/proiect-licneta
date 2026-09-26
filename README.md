@@ -1,429 +1,92 @@
-# OptiFleet & GroupLog B2B
+# OptiFleet B2B
 
-> Platformă B2B Inteligentă de Logistică | Rust API + Python ML + Next.js 16 | 1M+ Conexiuni Simultane  
-> **Teză de Licență UTM (Student: Ion Guțan, TI-233)**
+Bursă B2B de transport marfă pentru IMM-urile din Republica Moldova. Proiect de licență la UTM, FCIM (Ion Guțan, TI-233).
 
-👉 **[CONSULTĂ MANUALUL COMPLET DE PORNIRE CAP-COADĂ (AICI)](./MANUAL_DE_PORNIRE.md)** 👈
+Platforma leagă două tipuri de firme:
+- **expeditori fără flotă**, care caută camioane ce merg sau doar trec pe traseul lor și rezervă câțiva paleți;
+- **transportatori**, care își listează vehiculele cu locurile libere și răspund cererilor din bursă.
 
----
+Parcursul complet: căutare → negociere → contract (prin platformă sau direct) → cursă urmărită prin GPS → dovadă foto → confirmarea livrării.
 
-### 🟢 Status Sistem & Verificare Funcțională (100% Gata de Producție & Vercel)
-- **Rust API (Axum + Tokio):** Compilat în container Docker, activ pe portul 8000, endpoint `/api/v1/health` răspunde `ok`.
-- **Python ML (FastAPI + OR-Tools + Scikit-Learn):** Activ pe portul 8001, implementează algoritmii de optimizare CVRP și DBSCAN.
-- **OSRM Moldova:** Harta containerizată `moldova-latest.osrm` activă pe portul 5000 (rutare M5, R3, R6).
-- **Redis 7:** Activ pe portul 6379 pentru rate limiting, caching de matrici și streaming GPS.
-- **Nginx Reverse Proxy:** Activ pe porturile 80 și 443.
-- **Frontend (Next.js 16 + React 19):** Compilare cu 0 erori (`10/10 rute statice pre-randate`), arhitectură GoF (Repository, Adapter, Proxy Fallback), suport complet Vercel (`vercel.json` inclus).
-- **Securitate & Conformitate Legală:** Documentație exhaustivă în [`SECURITATE_SI_DATE_PERSONALE.md`](./SECURITATE_SI_DATE_PERSONALE.md) (Legea RM 133/2011, GDPR, RLS multi-tenant, IDNO Modulo 11, B2B SHA-256 contracts).
-
----
-
-## 🏗️ Arhitectură
+## Arhitectură
 
 ```
-Utilizatori (1M) → Nginx → Rust API (Axum) → Redis / Supabase
-                                   ↕ intern
-                            Python ML Service (FastAPI)
-                                   ↕
-                    Qwen3 (local) + Claude (API) + OSRM
+Browser ──► Next.js 16 (frontend/)          proxy.ts: sesiune + CSP cu nonce
+              │  cheia publishable + JWT-ul utilizatorului
+              ▼
+          Supabase (cloud)                  Auth · Postgres/PostGIS · RLS · Realtime · Storage
+              ▲  RPC-uri SECURITY DEFINER (supabase/sql/05_business_rpc.sql)
+              │
+Next.js route handlers ──► ml_service (Docker, intern, token)   DBSCAN · CVRP · Qwen3
+                      └──► OSRM (Docker, intern)                trasee pe drumurile Moldovei
 ```
 
----
+- **Baza de date e sursa de adevăr pentru securitate.** Fiecare rând e protejat prin Row Level Security, iar clientul poate scrie doar coloanele permise explicit. Tranzițiile de stare (rezervare, semnare, livrare, KYC) trec exclusiv prin funcții RPC care verifică apelantul și scriu jurnalul de audit.
+- **`ml_service` nu are acces la baza de date.** Primește date deja filtrate prin RLS de serverul Next.js și întoarce doar rezultate de calcul.
+- Detaliile sunt în [SECURITATE_SI_DATE_PERSONALE.md](SECURITATE_SI_DATE_PERSONALE.md).
 
-## 🚀 Pornire Rapidă
+## Funcționalități (prompturile K din `materiale/`)
 
-### 1. Condiții Prealabile
-
-| Tool | Versiune | Link |
-|---|---|---|
-| Docker Desktop | 4.x+ | [docker.com](https://docker.com) (**pornit înainte de orice!**) |
-| Git | orice | [git-scm.com](https://git-scm.com) |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org) (doar pentru frontend) |
-| Ollama | latest | [ollama.com](https://ollama.com) (opțional — pentru Qwen3) |
-
-> **Rust și Python NU trebuie instalate local** — compilarea se face în Docker!
-
-### 2. Configurare Environment
-
-```bash
-# Fișierele .env sunt deja create — verifică valorile:
-api/.env              # Supabase URL + keys + SECRET_KEY
-ml_service/.env       # Aceleași keys + ANTHROPIC_API_KEY (opțional)
-frontend/.env.local   # Supabase public keys + Mapbox token
-```
-
-### 3. Configurare Supabase (O dată)
-
-1. Creează proiect pe [supabase.com](https://supabase.com)
-2. Deschide **SQL Editor** și rulează în ordine:
-   - `supabase/migrations/001_enable_extensions.sql`
-   - `supabase/migrations/002_create_tables.sql`
-   - `supabase/migrations/003_triggers_functions.sql`
-   - `supabase/migrations/004_rls_policies.sql`
-   - `supabase/migrations/005_seed_moldova.sql`
-   - `supabase/migrations/006_jwt_claims_hook.sql`
-   - `supabase/migrations/007_create_users.sql`
-   - `supabase/migrations/008_kyc_contracts_invoices.sql` (KYC, contracte SHA-256, facturi & RLS)
-3. Copiază URL + Keys în `.env`
-
-### 4. Setup OSRM Moldova (O dată — deja făcut!)
-
-```bash
-# Dacă osrm/data/ este gol, rulează în PowerShell:
-Invoke-WebRequest -Uri "https://download.geofabrik.de/europe/moldova-latest.osm.pbf" `
-  -OutFile ".\osrm\data\moldova-latest.osm.pbf"
-
-docker run --rm -v "${PWD}/osrm/data:/data" ghcr.io/project-osrm/osrm-backend:latest `
-  osrm-extract -p /opt/car.lua /data/moldova-latest.osm.pbf
-
-docker run --rm -v "${PWD}/osrm/data:/data" ghcr.io/project-osrm/osrm-backend:latest `
-  osrm-partition /data/moldova-latest.osrm
-
-docker run --rm -v "${PWD}/osrm/data:/data" ghcr.io/project-osrm/osrm-backend:latest `
-  osrm-customize /data/moldova-latest.osrm
-```
-
-### 5. Instalare Qwen3 (Opțional — pentru AI local)
-
-```bash
-# Instalează Ollama de pe ollama.com, apoi:
-ollama pull qwen3:14b        # ~8GB, câteva minute
-# Qwen3 pornește automat când rulezi ollama
-```
-
-### 6. Pornire Standard (Comandă Unificată)
-
-Din rădăcina proiectului, rulați comanda standard:
-```bash
-npm run dev
-```
-Această comandă pornește automat:
-1. Microserviciile Docker în fundal (`docker compose up -d`): OSRM, Redis, Python ML, Rust Axum, Nginx.
-2. Interfața web Next.js pe **`http://localhost:3000`**.
-
-Pentru a opri platforma:
-```bash
-npm run stop
-# sau: docker compose down
-```
-
-### 8. Verificare Servicii
-
-```bash
-# Status toate containerele
-docker compose ps
-
-# Rust API health
-curl http://localhost:8000/api/v1/health
-
-# ML Service health  
-curl http://localhost:8001/health
-
-# OSRM test rută Chișinău → Bălți (~94km)
-curl "http://localhost:5000/route/v1/driving/28.8638,47.0105;27.9290,47.7630"
-
-# Redis ping
-docker exec optifleet-redis redis-cli ping
-```
-
----
-
-## 📁 Structura Proiectului
-
-```
-├── api/                   # 🦀 Rust API (Axum) — 1M users
-│   ├── src/
-│   │   ├── handlers/      # HTTP endpoints (orders, auth, chat, websocket)
-│   │   ├── middleware/    # JWT auth, rate limiting
-│   │   ├── db/            # Supabase client, Redis client
-│   │   └── services/      # ML service client
-│   ├── Cargo.toml
-│   └── Dockerfile         # Multi-stage build (rust:latest → debian:slim)
-├── ml_service/            # 🐍 Python ML + AI (FastAPI)
-│   ├── app/
-│   │   ├── api/v1/        # Endpoints clustering, optimization, chat
-│   │   ├── domain/        # Entities, value objects, interfaces
-│   │   ├── services/      # CVRP optimizer, DBSCAN clustering, AI agent
-│   │   └── infrastructure/# Supabase repository, OSRM client
-│   └── requirements.txt
-├── frontend/              # ⚛️  Next.js 14 TypeScript
-│   ├── src/app/           # Pages: /, /dashboard, /orders, /chat
-│   └── src/components/    # UI components
-├── supabase/migrations/   # 🗄️  SQL migrations (rulează în Supabase)
-├── osrm/                  # 🗺️  OSRM Moldova setup + date procesate
-├── docker-compose.yml     # 🐳 Stack complet (OSRM, Redis, ML, API, Nginx)
-└── nginx.conf             # ⚖️  Load balancer
-```
-
----
-
-## 🔑 Variabile de Mediu Necesare
-
-### ml_service/.env
-
-| Variabilă | Obții de la |
+| K | Unde |
 |---|---|
-| `SUPABASE_URL` | Supabase → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) *(opțional)* |
-| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` (Ollama pe Windows) |
-| `SECRET_KEY` | Același ca în `api/.env` |
+| K1 Design propriu, numele firmei în antet | `app/globals.css`, `components/ui/Sidebar.tsx` |
+| K2 Bară laterală + căutare centrată | `components/map/MapScreen.tsx` |
+| K3 Agregare pe regiune → raion → vehicul | `lib/clustering.ts`, `components/map/RealMoldovaMap.tsx` |
+| K4 Căutare cu tranzit, ora de trecere, filtru strict de capacitate, sugestii proactive | `lib/search-intent.ts`, `search_trips()`, `vehicles_passing_near_me()` |
+| K5 Panoul vehiculului, cu actualizare live | `components/map/VehicleDrawer.tsx` |
+| K6 Constructorul de vehicul (butonul „+”) | `components/fleet/VehicleWizard.tsx` |
+| K7 Plan de paleți la scară, drag-and-drop, coliziuni | `components/logistics/TruckCargo2D.tsx`, `save_vehicle_layout()` |
+| K8 Cerere de paleți + negociere în platformă | `VehicleDrawer`, `components/bookings/BookingDetail.tsx` |
+| K9 Contract: calea A (platformă) sau calea B (directă, cu exonerare) | `choose_contract_path()`, `sign_booking()` |
+| K10 Capacitate live, fără suprarezervare | `_reserve_capacity()` (blocare de rând), Realtime |
+| K11 Dovadă foto la livrare, vizibilă doar părților | bucket privat `delivery-proofs`, `record_delivery_proof()` |
+| K12 Preț/km, contract completat automat din profilul legal | `propose_booking()`, `choose_contract_path()` |
 
-### api/.env
+Tot aici: cererile expeditorilor fără mașini (`components/requests/`), grupaj DBSCAN (`ml_service`), tokenuri GPS pentru trackere (`/api/telemetry`) și verificarea KYC de către administrator (`/admin`).
 
-| Variabilă | Valoare |
+## Pornire rapidă
+
+Pașii detaliați sunt în [MANUAL_DE_PORNIRE.md](MANUAL_DE_PORNIRE.md). Pe scurt:
+
+1. **Supabase**: rulează în SQL Editor, în ordine, fișierele `supabase/sql/01_…` → `09_…` (plus `00_…` o singură dată, dacă proiectul are schema veche).
+2. **Frontend**: `cp frontend/.env.example frontend/.env.local` și completează valorile, apoi `npm --prefix frontend install` și `npm --prefix frontend run dev` → http://localhost:3000
+3. **Opțional**: `docker compose up -d` pentru OSRM (trasee reale) și `ml_service` (grupaj DBSCAN, Qwen3).
+
+## Teste
+
+| Comandă | Ce verifică |
 |---|---|
-| `SUPABASE_URL` | Același ca ml_service |
-| `SUPABASE_SERVICE_ROLE_KEY` | Același ca ml_service |
-| `SECRET_KEY` | String aleator min 32 caractere (**identic** în ambele .env!) |
-| `ML_SERVICE_URL` | `http://ml_service:8001` (în Docker) |
-| `REDIS_URL` | `redis://redis:6379` (în Docker) |
+| `npm --prefix frontend test` | parser de căutare, geometria paleților, agregarea hărții, sincronizarea raioanelor cu SQL |
+| `npm --prefix frontend run typecheck` / `run lint` / `run build` | TypeScript, ESLint (reguli React Compiler), build de producție |
+| `bash supabase/tests/run.sh` | schema pe un Postgres Supabase local: RLS, drepturi pe coloane, K4, K7–K11, GPS (38 de aserțiuni + atacuri care trebuie să eșueze) |
+| `bash supabase/tests/api-contract.sh` | aceleași apeluri PostgREST/RPC ca interfața, ca utilizatori reali (45 de verificări) |
+| `docker compose run --rm ml_service python -m pytest -q` | DBSCAN, CVRP, autentificarea internă |
 
-### frontend/.env.local
-
-| Variabilă | Valoare |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Același ca api/.env |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Settings → API → anon key |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | [mapbox.com](https://mapbox.com) → Account → Tokens |
-
----
-
-## 🤖 Arhitectura AI Duală
+## Structura
 
 ```
-Utilizator chat
-      ↓
-   CLAUDE                  ← răspuns empatic, limbaj natural (UX)
-      ↑
- [date reale]
-      ↑
-   QWEN3  →  tool calls    ← execuție tehnică (OSRM, DB, calcule)
-      ↓
- [rezultate]
-      ↑
-   OSRM / PostGIS / OR-Tools
+frontend/            Next.js 16 (App Router), Tailwind 4, Leaflet, Supabase SSR
+  src/proxy.ts       sesiune + redirect + Content-Security-Policy
+  src/app/           pagini: map, fleet, requests, bookings, account, admin, login, register
+  src/components/    hartă, flotă, cereri, contracte, desene vehicule
+  src/lib/           logică pură (testată), clienți Supabase, validări
+supabase/sql/        schema v2, rulată în ordine
+supabase/tests/      teste SQL și testul de contract API (Docker)
+ml_service/          FastAPI intern: optifleet_ml/ (grouping, routing, intent)
+osrm/                setup.sh + date OSRM pentru Moldova
+materiale/           documentația tezei și prompturile J/K
+CLAUDE.md            memoria proiectului (vezi proiect-memorie/memory/)
 ```
 
----
+## Curățenie (fișiere din v1 care pot fi șterse)
 
-## 📊 Performanță
-
-| Metric | Valoare |
-|---|---|
-| Conexiuni simultane (Rust) | 1M+ (Tokio async runtime) |
-| RAM per conexiune WebSocket | ~2KB |
-| Latency OSRM matrice | <5ms (Moldova graph in-memory) |
-| Latency DB query (PostGIS KNN) | <10ms (GIST index) |
-
----
-
-## 🧪 Testing
-
-```bash
-# Unit tests Python (în container)
-docker exec optifleet-ml pytest tests/unit -v
-
-# Integration tests Python
-docker exec optifleet-ml pytest tests/integration -v
-
-# Logs în timp real
-docker compose logs -f api        # Rust API logs
-docker compose logs -f ml_service # Python ML logs
-docker compose logs -f osrm       # OSRM routing logs
-```
-
----
-
-## 🐛 Troubleshooting
-
-| Problemă | Soluție |
-|---|---|
-| `docker: error ... dockerDesktopLinuxEngine` | Pornește Docker Desktop din Start Menu și așteaptă iconița verde |
-| `OSRM: No such file or directory` | Rulează pașii din secțiunea "Setup OSRM Moldova" |
-| `Redis connection refused` | Verifică `docker compose ps` — containerul `redis` trebuie `healthy` |
-| Frontend: hartă nu apare | Adaugă token Mapbox real în `frontend/.env.local` |
-| AI chat nu răspunde | Verifică `ANTHROPIC_API_KEY` în `ml_service/.env` |
-
-
-> Platformă B2B Inteligentă de Logistică | Rust API + Python ML | 1M+ Utilizatori Simultani
-
----
-
-## 🏗️ Arhitectură
+Nu mai sunt folosite. Fie au fost înlocuite de stub-uri, fie nu mai sunt referite de nimic:
 
 ```
-Utilizatori (1M) → Nginx → Rust API (Axum) → Redis / Supabase
-                                   ↕ intern
-                            Python ML Service (FastAPI)
-                                   ↕
-                    Qwen3 (local) + Claude (API) + OSRM
-```
-
----
-
-## 🚀 Pornire Rapidă
-
-### 1. Condiții Prealabile
-
-| Tool | Versiune | Link |
-|---|---|---|
-| Rust | 1.82+ | [rustup.rs](https://rustup.rs) |
-| Python | 3.12+ | [python.org](https://python.org) |
-| Docker Desktop | 4.x+ | [docker.com](https://docker.com) |
-| Ollama | latest | [ollama.com](https://ollama.com) |
-
-### 2. Configurare Environment
-
-```bash
-# ML Service
-cp ml_service/.env.example ml_service/.env
-# Editează ml_service/.env cu cheile tale
-
-# Rust API  
-cp api/.env.example api/.env
-# Editează api/.env cu cheile tale
-```
-
-### 3. Configurare Supabase (O dată)
-
-1. Creează proiect pe [supabase.com](https://supabase.com)
-2. Deschide **SQL Editor** și rulează în ordine:
-   - `supabase/migrations/001_enable_extensions.sql`
-   - `supabase/migrations/002_create_tables.sql`
-   - `supabase/migrations/003_triggers_functions.sql`
-   - `supabase/migrations/004_rls_policies.sql`
-3. Copiază URL + Keys în `.env`
-
-### 4. Setup OSRM Moldova (O dată)
-
-```bash
-# Pe Linux/Mac:
-chmod +x osrm/setup.sh
-./osrm/setup.sh
-
-# Pe Windows (Git Bash sau WSL):
-bash osrm/setup.sh
-```
-
-### 5. Instalare Qwen3 (O dată)
-
-```bash
-# Instalează Ollama de pe ollama.com
-ollama pull qwen3:14b        # ~8GB, câteva minute
-ollama serve                  # Pornire server local (port 11434)
-```
-
-### 6. Pornire Stack
-
-```bash
-# Pornește OSRM + Redis + Python ML Service
-docker-compose up -d
-
-# Pornire Rust API (development)
-cd api
-cargo run
-
-# Pornire Frontend
-cd frontend
-npm install
-npm run dev
-```
-
-### 7. Verificare
-
-```bash
-# Rust API health
-curl http://localhost:8000/api/v1/health
-
-# ML Service health
-curl http://localhost:8001/health
-
-# OSRM test rută Chișinău → Bălți
-curl "http://localhost:5000/route/v1/driving/28.8638,47.0105;27.9290,47.7630"
-
-# Ollama Qwen3 test
-curl http://localhost:11434/v1/models
-```
-
----
-
-## 📁 Structura Proiectului
-
-```
-├── api/                   # 🦀 Rust API (Axum) — 1M users
-├── ml_service/            # 🐍 Python ML + AI (FastAPI)
-├── frontend/              # ⚛️  Next.js 14 TypeScript
-├── supabase/migrations/   # 🗄️  SQL migrations (rulează în Supabase)
-├── osrm/                  # 🗺️  OSRM Moldova setup
-├── docker-compose.yml     # 🐳 Stack complet
-└── nginx.conf             # ⚖️  Load balancer
-```
-
----
-
-## 🔑 Variabile de Mediu Necesare
-
-### ml_service/.env
-
-| Variabilă | Obții de la |
-|---|---|
-| `SUPABASE_URL` | Supabase → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` (local) |
-
-### api/.env
-
-| Variabilă | Valoare |
-|---|---|
-| `SUPABASE_URL` | Același ca ml_service |
-| `SUPABASE_SERVICE_ROLE_KEY` | Același ca ml_service |
-| `SECRET_KEY` | `openssl rand -hex 32` |
-| `ML_SERVICE_URL` | `http://localhost:8001` |
-
----
-
-## 🤖 Arhitectura AI Duală
-
-```
-Utilizator chat
-      ↓
-   CLAUDE                  ← răspuns empatic, limbaj natural (UX)
-      ↑
- [date reale]
-      ↑
-   QWEN3  →  tool calls    ← execuție tehnică (OSRM, DB, calcule)
-      ↓
- [rezultate]
-      ↑
-   OSRM / PostGIS / OR-Tools
-```
-
----
-
-## 📊 Performanță
-
-| Metric | Valoare |
-|---|---|
-| Conexiuni simultane (Rust) | 1M+ (Tokio async runtime) |
-| RAM per conexiune WebSocket | ~2KB |
-| Latency OSRM matrice | <5ms (Moldova graph in-memory) |
-| Latency DB query (PostGIS KNN) | <10ms (GIST index) |
-
----
-
-## 🧪 Testing
-
-```bash
-# Unit tests Python
-cd ml_service
-pytest tests/unit -v
-
-# Integration tests Python
-pytest tests/integration -v
-
-# Rust tests
-cd api
-cargo test
+api/  backend/  nginx.conf  monitoring/  supabase/migrations/
+ml_service/app/  ml_service/worker.py
+frontend/src/hooks/  frontend/src/lib/api-client.ts  frontend/src/lib/demo-data.ts
+frontend/src/lib/kyc-data.ts  frontend/src/lib/contracts-engine.ts
+frontend/src/app/{orders,contracts,clusters,verification,dashboard,chat}/  frontend/src/app/api/chat/
+frontend/scripts/  frontend/.env.local.example  api/.env  backend/.env.example
 ```
