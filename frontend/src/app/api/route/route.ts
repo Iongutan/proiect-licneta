@@ -1,114 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { isLat, isLon, jsonError, rateLimited, readJson, requireUser } from "@/lib/api-guard";
+import { serverEnv } from "@/lib/server-env";
 
-export async function POST(req: NextRequest) {
+// Traseu rutier între două puncte prin OSRM-ul local (docker compose).
+// Nu folosim serverul public demo OSRM (politica lui interzice uzul în aplicații).
+
+interface Body {
+  from?: { lat?: unknown; lon?: unknown };
+  to?: { lat?: unknown; lon?: unknown };
+}
+
+export async function POST(request: Request) {
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
+  if (rateLimited(`route:${auth.userId}`, 30, 60_000)) return jsonError(429, "Prea multe cereri de traseu. Încearcă peste un minut.");
+
+  const body = await readJson<Body>(request);
+  const { from, to } = body ?? {};
+  if (!from || !to || !isLat(from.lat) || !isLon(from.lon) || !isLat(to.lat) || !isLon(to.lon)) {
+    return jsonError(400, "Coordonate invalide.");
+  }
+
+  const coords = `${from.lon.toFixed(6)},${from.lat.toFixed(6)};${to.lon.toFixed(6)},${to.lat.toFixed(6)}`;
   try {
-    const body = await req.json();
-    const { start, end } = body;
-
-    if (!start || !end || !start.lat || !start.lng || !end.lat || !end.lng) {
-      return NextResponse.json(
-        { error: "Coordonatele de plecare și sosire sunt obligatorii." },
-        { status: 400 }
-      );
-    }
-
-    const startLng = Number(start.lng);
-    const startLat = Number(start.lat);
-    const endLng = Number(end.lng);
-    const endLat = Number(end.lat);
-
-    // 1. Încercăm apelarea OSRM pentru rute reale cu alternative
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&alternatives=true`;
-      
-      const response = await fetch(osrmUrl, {
-        headers: { "User-Agent": "OptiFleet-Moldova-Router/1.0" },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.code === "Ok" && Array.isArray(data.routes) && data.routes.length > 0) {
-          const routes = data.routes.map((r: any, idx: number) => {
-            const distKm = Math.round((r.distance / 1000) * 10) / 10;
-            const durationMin = Math.round(r.duration / 60);
-            const hours = Math.floor(durationMin / 60);
-            const mins = durationMin % 60;
-            const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
-
-            // Calcul consum motorină estimat camion (cca. 28L / 100km la 22 MDL/L)
-            const dieselLiters = Math.round((distKm * 28) / 100);
-            const estFuelMdl = Math.round(dieselLiters * 22.5);
-
-            return {
-              id: `route-${idx + 1}`,
-              name: idx === 0 ? "Traseul Principal (Cel mai rapid)" : "Traseul Secundar (Alternativ)",
-              distanceKm: distKm,
-              durationMinutes: durationMin,
-              durationFormatted: durationStr,
-              coordinates: r.geometry.coordinates.map((c: [number, number]) => [c[1], c[0]]), // Leaflet vrea [lat, lng]
-              summaryRoad: r.legs?.[0]?.summary || (idx === 0 ? "Coridor Național M5 / R14" : "Drum Național R6"),
-              fuelLiters: dieselLiters,
-              estimatedCostMdl: estFuelMdl,
-            };
-          });
-
-          return NextResponse.json({
-            status: "success",
-            source: "OSRM-RealRoads",
-            routes,
-          });
-        }
-      }
-    } catch (osrmErr) {
-      console.warn("OSRM public service unreachable or timeout:", osrmErr);
-    }
-
-    // 2. Fallback geometric inteligent pe coridoarele rutiere reale ale Moldovei
-    const distDirectKm = Math.round(
-      Math.sqrt(Math.pow((endLat - startLat) * 111, 2) + Math.pow((endLng - startLng) * 75, 2)) * 1.28
-    );
-    const durationMin = Math.round((distDirectKm / 65) * 60);
-    const hours = Math.floor(durationMin / 60);
-    const mins = durationMin % 60;
-
-    const steps = 24;
-    const coords: [number, number][] = [];
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const curve = Math.sin(t * Math.PI) * 0.04;
-      const lat = startLat + (endLat - startLat) * t + curve * 0.4;
-      const lng = startLng + (endLng - startLng) * t + curve;
-      coords.push([lat, lng]);
-    }
-
-    const dieselLiters = Math.round((distDirectKm * 28) / 100);
-    const estFuelMdl = Math.round(dieselLiters * 22.5);
-
-    return NextResponse.json({
-      status: "success",
-      source: "OptiFleet-Geometric-Engine",
-      routes: [
-        {
-          id: "route-1",
-          name: "Traseul Principal (Coridor M5/R1)",
-          distanceKm: distDirectKm,
-          durationMinutes: durationMin,
-          durationFormatted: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`,
-          coordinates: coords,
-          summaryRoad: "Coridor Rutier Principal M5 / R1",
-          fuelLiters: dieselLiters,
-          estimatedCostMdl: estFuelMdl,
-        },
-      ],
+    const res = await fetch(`${serverEnv.osrmUrl}/route/v1/driving/${coords}?overview=full&geometries=geojson`, {
+      signal: AbortSignal.timeout(6000),
+      cache: "no-store",
     });
-  } catch (err: unknown) {
-    const error = err instanceof Error ? err.message : "Eroare la calcularea rutei";
-    return NextResponse.json({ error }, { status: 500 });
+    const data = await res.json();
+    const route = data?.routes?.[0];
+    if (!res.ok || data?.code !== "Ok" || !route?.geometry) return jsonError(502, "OSRM nu a găsit traseul.");
+    return NextResponse.json(
+      {
+        geometry: route.geometry,
+        distanceKm: Math.round(route.distance / 100) / 10,
+        durationMin: Math.round(route.duration / 60),
+        source: "osrm",
+      },
+      { headers: { "Cache-Control": "private, max-age=300" } },
+    );
+  } catch {
+    return jsonError(503, "Serviciul de rutare (OSRM) nu rulează.");
   }
 }

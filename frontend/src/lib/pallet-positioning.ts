@@ -1,132 +1,135 @@
-/**
- * OptiFleet B2B — 2D Precision Pallet Positioning & Collision Engine (Prompt K7)
- * Implements bird's eye view pallet placement, strict bounding box collision detection,
- * EUR / Industrial / Custom formats, and total payload weight summation.
- */
+// K7 — geometria planului de încărcare (vedere de sus), în centimetri.
+// Aceleași reguli sunt verificate și de save_vehicle_layout() în baza de date;
+// aici servesc pentru feedback instant în editor.
+//
+// Sistem de coordonate: x = de-a lungul caroseriei, de la peretele cabinei
+// spre uși; y = transversal, de la stânga. length = pe x, width = pe y.
 
-export type StandardPalletType = "EUR_80x120" | "EUR_120x80" | "ISO_100x120" | "CUSTOM";
+import type { BodyType, PalletFormat } from "./db-types";
 
-export interface PrecisionPallet {
-  id: string;
-  palletNumber?: number;
-  format: StandardPalletType;
-  x: number; // cm from front-left
-  y: number; // cm from front-left
-  width: number; // cm (transversal)
-  length: number; // cm (longitudinal)
-  weightKg: number;
-  cargoType?: string;
-  status: "FREE" | "OCCUPIED" | "RESERVED";
+export interface PalletSpec {
+  format: PalletFormat;
+  label: string;
+  lengthCm: number;
+  widthCm: number;
+  defaultWeightKg: number;
 }
 
-export interface VehicleDimensions {
-  lengthCm: number; // e.g. 1360 cm (13.6m)
-  widthCm: number; // e.g. 245 cm
-  heightCm: number; // e.g. 270 cm
-  maxPayloadKg: number; // e.g. 24000 kg
-}
-
-export const STANDARD_PALLETS: Record<string, { name: string; width: number; length: number; defaultWeightKg: number }> = {
-  EUR_80x120: {
-    name: "EUR-Paletă 80x120cm (De-a lungul)",
-    width: 80,
-    length: 120,
-    defaultWeightKg: 650,
-  },
-  EUR_120x80: {
-    name: "EUR-Paletă 120x80cm (De-a latul)",
-    width: 120,
-    length: 80,
-    defaultWeightKg: 650,
-  },
-  ISO_100x120: {
-    name: "Paletă Industrială ISO 100x120cm",
-    width: 100,
-    length: 120,
-    defaultWeightKg: 850,
-  },
+export const PALLET_SPECS: Record<Exclude<PalletFormat, "CUSTOM">, PalletSpec> = {
+  EUR: { format: "EUR", label: "EUR 120×80", lengthCm: 120, widthCm: 80, defaultWeightKg: 500 },
+  INDUSTRIAL: { format: "INDUSTRIAL", label: "Industrial 120×100", lengthCm: 120, widthCm: 100, defaultWeightKg: 700 },
 };
 
-/**
- * Verifică dacă 2 dreptunghiuri de paleți se suprapun (AABB 2D collision test)
- */
-export function doPalletsOverlap(a: { x: number; y: number; width: number; length: number }, b: { x: number; y: number; width: number; length: number }): boolean {
-  const noOverlap =
-    a.x + a.width <= b.x ||
-    b.x + b.width <= a.x ||
-    a.y + a.length <= b.y ||
-    b.y + b.length <= a.y;
+export interface Pallet {
+  id: string;
+  x: number;
+  y: number;
+  length: number;
+  width: number;
+  format: PalletFormat;
+  weightKg: number;
+  bookingId?: string | null;
+  label?: string | null;
+}
 
-  return !noOverlap;
+export interface Floor {
+  bodyType: BodyType;
+  lengthCm: number;
+  widthCm: number;
+  maxPayloadKg: number;
+  palletCapacity: number;
+}
+
+export type PlacementCheck = { ok: true } | { ok: false; reason: string };
+
+export const SNAP_CM = 5;
+export const snap = (v: number, step = SNAP_CM) => Math.round(v / step) * step;
+
+/** Tren rutier: podeaua e împărțită în două caroserii egale; cuplajul e la jumătate. */
+export function couplingX(floor: Floor): number | null {
+  return floor.bodyType === "ROAD_TRAIN" ? Math.floor(floor.lengthCm / 2) : null;
+}
+
+export function overlaps(a: Pick<Pallet, "x" | "y" | "length" | "width">, b: Pick<Pallet, "x" | "y" | "length" | "width">): boolean {
+  return a.x < b.x + b.length && b.x < a.x + a.length && a.y < b.y + b.width && b.y < a.y + a.width;
+}
+
+export function checkPlacement(existing: Pallet[], candidate: Pallet, floor: Floor): PlacementCheck {
+  if (candidate.x < 0 || candidate.y < 0 || candidate.x + candidate.length > floor.lengthCm || candidate.y + candidate.width > floor.widthCm) {
+    return { ok: false, reason: `Paletul iese din caroserie (${floor.lengthCm}×${floor.widthCm} cm).` };
+  }
+  const cx = couplingX(floor);
+  if (cx !== null && candidate.x < cx && candidate.x + candidate.length > cx) {
+    return { ok: false, reason: "Paletul trece peste cuplajul dintre camion și remorcă." };
+  }
+  const hit = existing.find((p) => p.id !== candidate.id && overlaps(p, candidate));
+  if (hit) return { ok: false, reason: "Se suprapune cu alt palet." };
+  return { ok: true };
+}
+
+export interface LayoutTotals {
+  ownPallets: number;
+  reservedPallets: number;
+  ownWeightKg: number;
+  totalWeightKg: number;
+  isOverweight: boolean;
+  isOverCapacity: boolean;
+}
+
+/** bookedPallets/bookedWeightKg = rezervări contractate (plasate sau nu pe plan). */
+export function layoutTotals(pallets: Pallet[], floor: Floor, bookedPallets = 0, bookedWeightKg = 0): LayoutTotals {
+  const own = pallets.filter((p) => !p.bookingId);
+  const ownWeightKg = own.reduce((s, p) => s + p.weightKg, 0);
+  const totalWeightKg = ownWeightKg + bookedWeightKg;
+  return {
+    ownPallets: own.length,
+    reservedPallets: pallets.length - own.length,
+    ownWeightKg,
+    totalWeightKg,
+    isOverweight: totalWeightKg > floor.maxPayloadKg,
+    isOverCapacity: own.length + bookedPallets > floor.palletCapacity,
+  };
+}
+
+/** Prima eroare a unui plan întreg, sau null dacă planul e valid. */
+export function validateLayout(pallets: Pallet[], floor: Floor, bookedPallets = 0, bookedWeightKg = 0): string | null {
+  for (let i = 0; i < pallets.length; i++) {
+    const check = checkPlacement(pallets.slice(0, i), pallets[i], floor);
+    if (!check.ok) return `Paletul #${i + 1}: ${check.reason}`;
+  }
+  const t = layoutTotals(pallets, floor, bookedPallets, bookedWeightKg);
+  if (t.isOverCapacity) return `Capacitate depășită: ${t.ownPallets} + ${bookedPallets} rezervați > ${floor.palletCapacity} locuri.`;
+  if (t.isOverweight) return `Sarcină depășită: ${t.totalWeightKg} kg > ${floor.maxPayloadKg} kg.`;
+  return null;
 }
 
 /**
- * Validare plasare palet:
- *  1. Verifică încadrarea în interiorul remorcii
- *  2. Verifică absența oricărei suprapuneri cu paleții deja plasați
+ * Plasare automată „bottom-left”: încearcă pozițiile lipite de pereți sau de
+ * paleții existenți, de la cabină spre uși, în ambele orientări.
  */
-export function canPlacePallet(
-  existingPallets: PrecisionPallet[],
-  newPallet: PrecisionPallet,
-  dimensions: VehicleDimensions,
-  ignoreId?: string
-): { allowed: boolean; reason?: string } {
-  // 1. Verificare margini remorcă
-  if (newPallet.x < 0 || newPallet.y < 0) {
-    return { allowed: false, reason: "Coordonatele nu pot fi negative." };
-  }
-
-  if (newPallet.x + newPallet.width > dimensions.lengthCm) {
-    return {
-      allowed: false,
-      reason: `Paletul depășește lungimea remorcii (${newPallet.x + newPallet.width}cm > ${dimensions.lengthCm}cm).`,
-    };
-  }
-
-  if (newPallet.y + newPallet.length > dimensions.widthCm) {
-    return {
-      allowed: false,
-      reason: `Paletul depășește lățimea remorcii (${newPallet.y + newPallet.length}cm > ${dimensions.widthCm}cm).`,
-    };
-  }
-
-  // 2. Verificare suprapunere cu paleți existenți
-  for (const existing of existingPallets) {
-    if (ignoreId && existing.id === ignoreId) continue;
-    if (doPalletsOverlap(newPallet, existing)) {
-      return {
-        allowed: false,
-        reason: `Suprapunere detectată cu paletul #${existing.palletNumber || existing.id}.`,
-      };
+export function findFreeSpot(existing: Pallet[], floor: Floor, lengthCm: number, widthCm: number): { x: number; y: number; length: number; width: number } | null {
+  const xs = [...new Set([0, ...existing.map((p) => p.x + p.length), couplingX(floor) ?? 0])].sort((a, b) => a - b);
+  const ys = [...new Set([0, ...existing.map((p) => p.y + p.width)])].sort((a, b) => a - b);
+  const orientations = lengthCm === widthCm ? [[lengthCm, widthCm]] : [[lengthCm, widthCm], [widthCm, lengthCm]];
+  for (const x of xs) {
+    for (const [length, width] of orientations) {
+      for (const y of ys) {
+        const candidate: Pallet = { id: "__probe__", x, y, length, width, format: "CUSTOM", weightKg: 0 };
+        if (checkPlacement(existing, candidate, floor).ok) return { x, y, length, width };
+      }
     }
   }
-
-  return { allowed: true };
+  return null;
 }
 
-/**
- * Calculează sarcina totală a mărfii plasate și verifică depășirea sarcinii maxime
- */
-export function calculateTotalPayload(
-  pallets: PrecisionPallet[],
-  maxPayloadKg: number
-): {
-  totalWeightKg: number;
-  maxPayloadKg: number;
-  remainingPayloadKg: number;
-  isOverweight: boolean;
-  occupancyPercent: number;
-} {
-  const totalWeightKg = pallets.reduce((sum, p) => sum + (p.weightKg || 0), 0);
-  const remainingPayloadKg = Math.max(0, maxPayloadKg - totalWeightKg);
-  const isOverweight = totalWeightKg > maxPayloadKg;
-  const occupancyPercent = maxPayloadKg > 0 ? Math.min(100, Math.round((totalWeightKg / maxPayloadKg) * 100)) : 0;
-
-  return {
-    totalWeightKg,
-    maxPayloadKg,
-    remainingPayloadKg,
-    isOverweight,
-    occupancyPercent,
-  };
+/** Câți paleți de un format încap geometric pe podea (pentru a sugera capacitatea). */
+export function geometricCapacity(floor: Pick<Floor, "bodyType" | "lengthCm" | "widthCm">, spec: Pick<PalletSpec, "lengthCm" | "widthCm"> = PALLET_SPECS.EUR): number {
+  const fit = (L: number, W: number) =>
+    Math.max(
+      Math.floor(L / spec.lengthCm) * Math.floor(W / spec.widthCm),
+      Math.floor(L / spec.widthCm) * Math.floor(W / spec.lengthCm),
+    );
+  if (floor.bodyType === "LOWBED") return 0;
+  if (floor.bodyType === "ROAD_TRAIN") return 2 * fit(Math.floor(floor.lengthCm / 2), floor.widthCm);
+  return fit(floor.lengthCm, floor.widthCm);
 }

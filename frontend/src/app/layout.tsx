@@ -1,29 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OptiFleet B2B — Platformă Logistică Inteligentă Moldova",
-  description:
-    "Reduceți costurile de transport cu până la 62% prin livrări grupate AI-optimizate. " +
-    "Tracking GPS real-time, CVRP routing, și asistent AI disponibil 24/7.",
-  keywords: ["logistică", "transport", "Moldova", "B2B", "livrări grupate", "AI"],
-  authors: [{ name: "OptiFleet Team" }],
-  openGraph: {
-    title: "OptiFleet B2B",
-    description: "Platformă B2B Inteligentă de Logistică pentru IMM-uri din Moldova",
-    locale: "ro_MD",
-    type: "website",
-  },
+  title: { default: "OptiFleet", template: "%s · OptiFleet" },
+  description: "Bursă B2B de transport marfă pentru IMM-urile din Republica Moldova.",
+  robots: { index: false, follow: false },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export const viewport: Viewport = { themeColor: "#ffffff" };
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Randare dinamică: nonce-ul CSP din proxy.ts se aplică la fiecare request.
+  await connection();
   return (
-    <html lang="ro" className="bg-white text-slate-900">
-      <body className="antialiased bg-white text-slate-900">{children}</body>
+    <html lang="ro">
+      <body>{children}</body>
     </html>
   );
 }

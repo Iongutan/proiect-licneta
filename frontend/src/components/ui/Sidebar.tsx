@@ -1,232 +1,185 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Bell, FileText, LogOut, Map as MapIcon, Package, Settings, ShieldCheck, Truck } from "lucide-react";
 import Link from "next/link";
-import { useAppStatus } from "@/hooks/use-app-status";
-import {
-  Map,
-  Package,
-  Truck,
-  FileText,
-  User,
-  Layers,
-  BarChart3,
-  ShieldCheck,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Building2,
-} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { CompanyKind, KycStatus, Notification } from "@/lib/db-types";
+import { fmtDateTime } from "@/lib/format";
+import { supabaseBrowser } from "@/lib/supabase";
+
+export interface SidebarViewer {
+  fullName: string | null;
+  email: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  companyKind: CompanyKind | null;
+  kycStatus: KycStatus | null;
+  isPlatformAdmin: boolean;
+}
 
 interface NavItem {
   href: string;
   label: string;
-  shortLabel: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: typeof MapIcon;
+  show: (v: SidebarViewer) => boolean;
 }
 
-const primaryNav: NavItem[] = [
-  { href: "/map", label: "Hartă Live & Tranzit", shortLabel: "Hartă", icon: Map },
-  { href: "/orders", label: "Comenzile mele", shortLabel: "Comenzi", icon: Package },
-  { href: "/fleet", label: "Flota mea", shortLabel: "Flotă", icon: Truck },
-  { href: "/contracts", label: "Contracte", shortLabel: "Contracte", icon: FileText },
-  { href: "/login", label: "Cont", shortLabel: "Cont", icon: User },
+const canShip = (v: SidebarViewer) => v.companyKind === "SHIPPER" || v.companyKind === "BOTH";
+const canCarry = (v: SidebarViewer) => v.companyKind === "CARRIER" || v.companyKind === "BOTH";
+
+const NAV: NavItem[] = [
+  { href: "/map", label: "Hartă", icon: MapIcon, show: (v) => Boolean(v.companyId) },
+  { href: "/requests", label: "Comenzile mele", icon: Package, show: (v) => canShip(v) && !canCarry(v) },
+  { href: "/requests", label: "Bursa de marfă", icon: Package, show: canCarry },
+  { href: "/fleet", label: "Flota mea", icon: Truck, show: canCarry },
+  { href: "/bookings", label: "Contracte", icon: FileText, show: (v) => Boolean(v.companyId) },
+  { href: "/account", label: "Cont", icon: Settings, show: (v) => Boolean(v.companyId) },
+  { href: "/admin", label: "Administrare", icon: ShieldCheck, show: (v) => v.isPlatformAdmin },
 ];
 
-const secondaryNav: NavItem[] = [
-  { href: "/clusters", label: "Consolidare Grupaj", shortLabel: "Grupaj", icon: Layers },
-  { href: "/dashboard", label: "Panou de Control (KPI)", shortLabel: "KPI", icon: BarChart3 },
-  { href: "/verification", label: "Certificare KYC & ANTA", shortLabel: "KYC", icon: ShieldCheck },
-  { href: "/admin", label: "Administrare Sistem", shortLabel: "Admin", icon: Settings },
-];
+export default function Sidebar({ viewer }: { viewer: SidebarViewer }) {
+  const pathname = usePathname();
+  const router = useRouter();
 
-interface SidebarProps {
-  activePath?: string;
-  isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
-}
-
-export default function Sidebar({
-  activePath,
-  isCollapsed: externalIsCollapsed,
-  onToggleCollapse,
-}: SidebarProps) {
-  const { isLive } = useAppStatus();
-  const [internalCollapsed, setInternalCollapsed] = useState(false);
-  const [companyName, setCompanyName] = useState<string>("TransMoldova Grup SRL");
-
-  const collapsed = externalIsCollapsed !== undefined ? externalIsCollapsed : internalCollapsed;
-
-  useEffect(() => {
-    const loadCompany = () => {
-      const stored = localStorage.getItem("optifleet_company_name");
-      if (stored) {
-        setCompanyName(stored);
-      } else {
-        const role = localStorage.getItem("optifleet_user_role");
-        if (role === "CARRIER_ADMIN") {
-          setCompanyName("TransMold Express SRL");
-        } else if (role === "SME_ADMIN") {
-          setCompanyName("TechMold Electronics SRL");
-        } else {
-          setCompanyName("TransMoldova Grup SRL");
-        }
-      }
-    };
-
-    loadCompany();
-    window.addEventListener("storage", loadCompany);
-    return () => window.removeEventListener("storage", loadCompany);
-  }, []);
-
-  const handleToggle = () => {
-    if (onToggleCollapse) {
-      onToggleCollapse();
-    } else {
-      setInternalCollapsed((prev) => !prev);
-    }
+  const signOut = async () => {
+    await supabaseBrowser().auth.signOut();
+    router.replace("/login");
+    router.refresh();
   };
 
   return (
-    <aside
-      className={`h-screen fixed left-0 top-0 flex flex-col z-40 bg-white border-r border-slate-200 transition-all duration-300 select-none ${
-        collapsed ? "w-16" : "w-64"
-      }`}
-    >
-      {/* Header Branding + Companie + Toggle */}
-      <div className="px-3.5 py-3.5 border-b border-slate-200 flex items-center justify-between">
-        {!collapsed ? (
-          <Link href="/map" className="flex items-center gap-2.5 overflow-hidden group">
-            <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-xs group-hover:bg-blue-700 transition-colors">
-              O
-            </div>
-            <div className="truncate min-w-0">
-              <div className="font-bold text-sm text-slate-900 tracking-tight leading-tight">
-                OptiFleet B2B
-              </div>
-              <div
-                className="text-[11px] text-slate-500 font-medium truncate flex items-center gap-1 mt-0.5"
-                title={companyName}
-              >
-                <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                <span className="truncate">{companyName}</span>
-              </div>
-            </div>
-          </Link>
-        ) : (
-          <Link href="/map" className="mx-auto" title={`OptiFleet B2B · ${companyName}`}>
-            <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-xs">
-              O
-            </div>
-          </Link>
-        )}
-
-        <button
-          onClick={handleToggle}
-          title={collapsed ? "Extinde meniul" : "Restrânge meniul"}
-          className={`p-1.5 rounded-md text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors shrink-0 ${
-            collapsed ? "mx-auto mt-2" : ""
-          }`}
-        >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
+    <aside className="fixed inset-y-0 left-0 z-40 flex w-56 flex-col border-r border-line bg-surface">
+      <div className="border-b border-line px-4 py-4">
+        <Link href="/map" className="block">
+          <div className="text-[15px] font-semibold tracking-tight text-ink">OptiFleet</div>
+          {viewer.companyName && (
+            <div className="mt-0.5 truncate text-xs text-muted" title={viewer.companyName}>{viewer.companyName}</div>
           )}
-        </button>
+        </Link>
       </div>
 
-      {/* Navigare Principală (Prompt K2: Hartă, Comenzile mele, Flota mea, Contracte, Cont) */}
-      <nav className="flex-1 px-2.5 py-3 flex flex-col gap-4 overflow-y-auto overflow-x-hidden">
-        {/* Secțiunea Principală */}
-        <div className="flex flex-col gap-1">
-          {!collapsed && (
-            <div className="px-2 text-[10px] font-bold tracking-wider text-slate-400 uppercase truncate">
-              Navigare Principală
-            </div>
-          )}
-          {primaryNav.map((item) => {
-            const isActive = activePath === item.href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
-                  isActive
-                    ? "bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600 shadow-2xs"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                } ${collapsed ? "justify-center px-0" : ""}`}
-              >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-blue-600" : "text-slate-500"}`} />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-                {!collapsed && isActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 ml-auto shrink-0" />
-                )}
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Secțiunea Secundară / Extinsă */}
-        <div className="flex flex-col gap-1 pt-2 border-t border-slate-100">
-          {!collapsed && (
-            <div className="px-2 text-[10px] font-bold tracking-wider text-slate-400 uppercase truncate">
-              Operațiuni & Gestionare
-            </div>
-          )}
-          {secondaryNav.map((item) => {
-            const isActive = activePath === item.href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
-                  isActive
-                    ? "bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600 shadow-2xs"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                } ${collapsed ? "justify-center px-0" : ""}`}
-              >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-blue-600" : "text-slate-400"}`} />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </Link>
-            );
-          })}
-        </div>
+      <nav className="flex-1 space-y-0.5 p-2" aria-label="Navigare principală">
+        {NAV.filter((item) => item.show(viewer)).map(({ href, label, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(`${href}/`);
+          return (
+            <Link
+              key={label}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] ${
+                active ? "bg-accent-soft font-medium text-accent-strong" : "text-ink-2 hover:bg-canvas"
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
 
-      {/* Footer Status B2B */}
-      <div className="p-2.5 border-t border-slate-200 bg-slate-50 flex flex-col gap-1.5">
-        {!collapsed ? (
-          <div className="flex items-center justify-between text-[11px] text-slate-600 px-1">
-            <span className="text-[11px] font-medium text-slate-500">Sistem B2B:</span>
-            <span
-              className="px-2 py-0.5 rounded font-mono text-[10px] font-semibold flex items-center gap-1.5"
-              style={{
-                background: isLive ? "#f0fdf4" : "#eff6ff",
-                color: isLive ? "#16a34a" : "#2563eb",
-                border: isLive ? "1px solid #bbf7d0" : "1px solid #bfdbfe",
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: isLive ? "#16a34a" : "#2563eb" }}
-              />
-              {isLive ? "RUST ONLINE" : "LOCAL READY"}
-            </span>
-          </div>
-        ) : (
-          <div className="flex justify-center" title="Sistem Status">
-            <span
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ background: isLive ? "#16a34a" : "#2563eb" }}
-            />
-          </div>
-        )}
+      {viewer.companyId && viewer.kycStatus !== "VERIFIED" && (
+        <Link href="/account" className="mx-2 mb-2 rounded-md border border-[#fde68a] bg-warn-soft px-3 py-2 text-xs text-warn">
+          {viewer.kycStatus === "REJECTED" ? "Verificarea firmei a fost respinsă." : "Firma așteaptă verificarea. Până atunci poți căuta, dar nu poți rezerva."}
+        </Link>
+      )}
+
+      <div className="flex items-center gap-2 border-t border-line p-2">
+        <div className="min-w-0 flex-1 px-1.5">
+          <div className="truncate text-xs font-medium text-ink">{viewer.fullName || viewer.email}</div>
+          {viewer.fullName && <div className="truncate text-[11px] text-muted">{viewer.email}</div>}
+        </div>
+        {viewer.companyId && <NotificationBell companyId={viewer.companyId} />}
+        <button type="button" onClick={signOut} className="btn btn-ghost btn-sm px-2" title="Ieșire" aria-label="Ieșire">
+          <LogOut className="h-4 w-4" strokeWidth={1.75} />
+        </button>
       </div>
     </aside>
+  );
+}
+
+function NotificationBell({ companyId }: { companyId: string }) {
+  const [items, setItems] = useState<Notification[]>([]);
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const unread = items.filter((n) => !n.read_at).length;
+
+  useEffect(() => {
+    const supabase = supabaseBrowser();
+    let active = true;
+    supabase
+      .from("notifications")
+      .select("id, kind, title, body, link, read_at, created_at")
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => active && data && setItems(data));
+
+    const channel = supabase
+      .channel(`notifications:${companyId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `company_id=eq.${companyId}` },
+        (payload) => setItems((prev) => [payload.new as Notification, ...prev].slice(0, 20)),
+      )
+      .subscribe();
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [companyId]);
+
+  const markAllRead = async () => {
+    await supabaseBrowser().rpc("mark_notifications_read");
+    setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="btn btn-ghost btn-sm relative px-2"
+        aria-label={`Notificări${unread ? ` (${unread} necitite)` : ""}`}
+        aria-expanded={open}
+      >
+        <Bell className="h-4 w-4" strokeWidth={1.75} />
+        {unread > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">
+            {unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="card absolute bottom-10 left-0 z-50 w-80 overflow-hidden shadow-lg">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2">
+            <span className="t-label">Notificări</span>
+            {unread > 0 && (
+              <button type="button" className="text-xs text-accent hover:underline" onClick={markAllRead}>
+                Marchează citite
+              </button>
+            )}
+          </div>
+          <ul className="max-h-80 overflow-y-auto">
+            {items.length === 0 && <li className="px-3 py-6 text-center t-small">Nicio notificare.</li>}
+            {items.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  className={`block w-full border-b border-line px-3 py-2 text-left last:border-0 hover:bg-canvas ${n.read_at ? "" : "bg-accent-soft/40"}`}
+                  onClick={() => {
+                    setOpen(false);
+                    if (n.link) router.push(n.link);
+                  }}
+                >
+                  <div className="text-[13px] font-medium text-ink">{n.title}</div>
+                  {n.body && <div className="mt-0.5 line-clamp-2 text-xs text-ink-2">{n.body}</div>}
+                  <div className="mt-1 t-small">{fmtDateTime(n.created_at)}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

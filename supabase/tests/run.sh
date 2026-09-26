@@ -14,5 +14,5 @@ sleep 4
 run()   { docker exec -i -e PGPASSWORD=local-test-only "$NAME" psql -U postgres       -v ON_ERROR_STOP=1 -q -f - < "$1"; }
 runsu() { docker exec -i -e PGPASSWORD=local-test-only "$NAME" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q -f - < "$1"; }
 runsu tests/00_test_prelude.sql
-for f in sql/0[1-8]_*.sql; do echo "→ $f"; run "$f"; done
+for f in sql/0[1-9]_*.sql; do echo "→ $f"; run "$f"; done
 run tests/10_security_and_flows.sql

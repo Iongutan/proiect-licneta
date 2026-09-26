@@ -1,0 +1,4 @@
+# Scripturile shell și SQL rămân cu LF (altfel bash/psql din Docker eșuează)
+*.sh  text eol=lf
+*.sql text eol=lf
+*.mjs text eol=lf

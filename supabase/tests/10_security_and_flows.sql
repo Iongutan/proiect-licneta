@@ -34,6 +34,8 @@ do $$ begin
   perform test.eq((select count(*) from public.companies where name = 'Carausul Neverificat')::int, 0, 'RLS: nu vede firme neverificate ale altora');
   perform test.eq((select count(*) from public.vehicles)::int, 10, 'bursa: vede cele 10 vehicule demo listate');
   perform test.eq((select count(*) from public.vehicle_private)::int, 0, 'RLS: nu vede datele șoferilor');
+  perform test.eq((select count(*) from public.vehicles_map where lat is not null)::int, 10, 'view vehicles_map: coordonate pentru hartă');
+  perform test.eq((public.vehicle_route('d1000000-0000-4000-8000-000000000001') ->> 'type'), 'LineString', 'vehicle_route: GeoJSON');
   perform test.eq((select count(*) from public.freight_requests)::int, 0, 'RLS: expeditorul nu vede cererile altor expeditori');
 end $$;
 select test.expect_error($$select * from public.vehicle_devices$$, 'permission denied');
@@ -76,6 +78,7 @@ select public.set_vehicle_trip((select id from public.vehicles where plate = 'TS
 -- Transportatorul vede bursa de cereri (e verificat)
 do $$ begin
   perform test.eq((select count(*) from public.freight_requests where status = 'OPEN')::int, 4, 'bursă: transportatorul verificat vede cererile deschise');
+  perform test.eq((select count(*) from public.freight_requests_geo where origin_lat is not null)::int, 4, 'view freight_requests_geo: coordonate');
 end $$;
 
 -- ─── Căutare cu tranzit (K4) ──────────────────────────────────────────────
