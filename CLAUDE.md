@@ -43,7 +43,8 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main)_
 
 ## ⚠️ Stare GitHub (de verificat la începutul sesiunii)
 - Pe GitHub, `refresh/v2` e încă varianta VECHE (cap 2dc81f9, cu trailere „Co-Authored-By: Claude”).
-- Local există istoricul curățat (doar Iongutan) + commit-urile de flotă multimodală. Sesiunile cloud primesc 403 la
+- Local (și în `refresh-v2.bundle` trimis utilizatorului) există istoricul curățat, doar Iongutan: 15 commit-uri peste
+  main, ultimul 2672998 (paleți drag & drop + asistent). Sesiunile cloud primesc 403 la
   `git push` pe acest repo; utilizatorul urcă din `refresh-v2.bundle` pe o ramură NOUĂ (a cerut „alt branch”;
   `refresh/v2` o șterge el mai târziu). Dacă ramura nouă există, continuă pe ea.
 
@@ -66,8 +67,9 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main)_
 - Next.js: `lib/server/{db,auth,query,rpc,storage,realtime}.ts`, rute `/api/{auth/*,db,rpc/[fn],storage/[bucket],realtime}`;
   client `lib/db-browser.ts` / `lib/db-server.ts` cu aceeași formă from()/rpc()/channel()/storage (`lib/query-builder.ts`).
   `@supabase/*` eliminat; CSP connect-src doar 'self'; `devIndicators: false`.
-- Verificat: SQL 58 aserțiuni (`npm run test:db`), vitest 29, tsc/eslint, E2E în browser (`npm run e2e`):
-  înregistrare 3 firme, KYC de admin, vagon (38/50) + dronă, cerere de locuri, notificare live.
+- Verificat: SQL 58 aserțiuni (`npm run test:db`), vitest 38, tsc/eslint, E2E în browser (`npm run e2e`):
+  înregistrare 3 firme, KYC de admin, vagon (38/50) + dronă, asistentul „am un frigider”, plan de paleți cu
+  drag & drop salvat, cerere de locuri, notificare live.
 - Netestat încă pe Windows real: descărcarea/dezarhivarea runtime-ului (`tar -xf` pe .zip) și oprirea la Stop din VS Code.
 - De curățat: `infra/local` (Docker), `docker-compose.yml`, `OptiFleet.cmd` vechi, README (încă descrie Supabase).
 
@@ -87,12 +89,18 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main)_
   Constructorul pornește cu „Ce adaugi?” (scrii „vagon de tren” → tipul potrivit); vagonul și drona declară locurile
   ocupate ca număr (`set_vehicle_occupancy`), camioanele păstrează planul K7; `search_trips` întoarce `IN_AREA` pentru drone.
   Catalogul unic: `frontend/src/lib/vehicle-catalog.ts` — un tip nou = o intrare acolo + desen + valoare în CHECK-urile SQL.
-  Date demo: vagon închiriat `31 53 2458 017-2` (Ungheni, 18 libere din 50) și dronă `MDA-UAS-0042` (TransMold, zona Chișinău).
+  `08_seed_demo.sql` conține și un vagon + o dronă, dar runner-ul local NU încarcă datele demo (doar `npm run test:db` le folosește).
 - v2: Next.js 16 + schema SQL v2 (RLS, RPC, K1–K12, încredere/piață în 10_trust_and_market.sql), desene vehicule,
   plan paleți K7, căutare cu tranzit K4, contracte K9 cu SHA-256, dovadă foto K11. Teste: vitest 20, SQL 47, contract API 45.
 - Varianta Supabase self-hosted în Docker (`infra/local`, `OptiFleet.cmd`) funcționează, DAR utilizatorul NU o vrea
   (Docker = dependență). Stack-ul Docker local încă există pe PC; containerele v1 vechi sunt oprite.
 - `PLAN_IMPLEMENTARE.md` (A acum / B viitor) — trebuie actualizat pentru v3 (fără Docker/Supabase/Claude).
+
+## Pașii următori
+1. Verificarea UX a cererilor de marfă pentru producători (`/requests`) pe stack-ul local + un pas în E2E.
+2. Curățare: `infra/local`, `docker-compose.yml`, `OptiFleet.cmd` vechi, README, `PLAN_IMPLEMENTARE.md` pentru v3.
+3. Test pe Windows real (descărcarea runtime-ului, Stop din VS Code).
+4. Când push-ul merge: ramura nouă `dezvoltare` din istoricul curățat.
 
 ## Decizii de produs confirmate (rămân valabile)
 - Șoferii NU au cont; doar firma. Verificare telefon la nivel de firmă (idee gratuită: bot Telegram / apel admin).
