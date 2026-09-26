@@ -1,52 +1,23 @@
 # syntax=docker/dockerfile:1
-# ═══════════════════════════════════════════════════════════════════
-# OptiFleet B2B — Python ML Service Dockerfile
-# Multi-stage build: imagine finală mică, fără unelte de build
-# ═══════════════════════════════════════════════════════════════════
-
-# Stage 1: Builder
+# OptiFleet ML — serviciu intern stateless (DBSCAN, CVRP, intenție Qwen3)
 FROM python:3.12-slim AS builder
-
 WORKDIR /build
-
-# Instalare dependențe sistem (pentru compilare pachete native)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    g++ \
-    libgeos-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiază și instalează dependențe Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt --target=/install
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Stage 2: Runtime
-FROM python:3.12-slim AS runtime
-
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 10001 ml
+COPY --from=builder /install /usr/local
 WORKDIR /app
-
-# Dependențe runtime (fără build tools)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiază pachetele Python din builder
-COPY --from=builder /install /usr/local/lib/python3.12/site-packages/
-
-# Copiază codul sursă
-COPY . .
-
-# Utilizator non-root (securitate)
-RUN useradd -m -u 1000 mlservice && chown -R mlservice:mlservice /app
-USER mlservice
-
+COPY --chown=ml:ml main.py pytest.ini ./
+COPY --chown=ml:ml optifleet_ml ./optifleet_ml
+COPY --chown=ml:ml tests ./tests
+USER ml
 EXPOSE 8001
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
-
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", \
-     "--workers", "2", "--log-level", "info"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2", "--proxy-headers", "--no-server-header"]
