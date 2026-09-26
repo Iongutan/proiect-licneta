@@ -39,7 +39,7 @@ Reguli generale:
 
 # MEMORIE — stare curentă
 
-_Ultima actualizare: 2026-09-26 (branch `refresh/v2`, necomis pe main, nepush-uit)_
+_Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-uit)_
 
 **Ce s-a făcut până acum:**
 - v2 completă: Next.js 16 + Supabase (RLS, RPC, Realtime, Storage) + `ml_service` intern stateless + OSRM. API-ul Rust și modul demo au fost eliminate din arhitectură (vezi decisions.md).
