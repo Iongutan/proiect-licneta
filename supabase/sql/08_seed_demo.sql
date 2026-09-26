@@ -2,6 +2,7 @@
 -- OptiFleet v2 — 08: date demo (OPȚIONAL, pentru prezentare)
 --
 -- Companii fictive (is_demo = true), vehicule cu curse pe coridoarele reale,
+-- un vagon de tren și o dronă (flota multimodală),
 -- paleți plasați la scară, cereri deschise. Nu creează conturi de utilizator.
 -- După o zi cursele „expiră”: adminul le readuce la „acum” din pagina Admin
 -- (butonul „Reîmprospătează cursele demo” → refresh_demo_trips()).
@@ -66,9 +67,28 @@ select r.id::uuid, r.company::uuid, r.plate, r.make_model, r.body, r.l, r.w, r.h
 from routes r
 on conflict (id) do nothing;
 
+-- Flota multimodală: un vagon închiriat (locuri declarate în bloc) și o dronă
+-- care deservește Chișinăul și raioanele din jur, în flotele firmelor demo.
+insert into public.vehicles (id, company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm,
+                             max_payload_kg, pallet_capacity, price_per_km, gps_protocol, status, is_listed,
+                             ownership, ownership_until, service_district_ids, district_id, position, position_at,
+                             occupied_pallets, occupied_weight_kg)
+select u.id::uuid, u.company::uuid, u.plate, u.make_model, u.body, u.l, u.w, u.h, u.payload, u.places, u.price,
+       'MANUAL', 'AVAILABLE', true, u.ownership, u.until, u.area, u.dist, d.center, now(), u.occ, u.occ_kg
+from (values
+  ('d1000000-0000-4000-8000-000000000011', 'd0000000-0000-4000-8000-000000000009', '31 53 2458 017-2', 'Vagon acoperit Habbins (CFM)',
+   'RAIL_WAGON', 2200, 280, 260, 60000, 50, 9.0, 'RENTED', current_date + 120, '{}'::text[], 'ungheni', 32, 19200),
+  ('d1000000-0000-4000-8000-000000000012', 'd0000000-0000-4000-8000-000000000001', 'MDA-UAS-0042', 'DJI FlyCart 30',
+   'DRONE', 70, 50, 40, 30, 2, 25.0, 'OWNED', null::date, '{chisinau,ialoveni,anenii_noi,criuleni,straseni}'::text[], 'chisinau', 0, 0)
+) as u(id, company, plate, make_model, body, l, w, h, payload, places, price, ownership, until, area, dist, occ, occ_kg)
+join public.districts d on d.id = u.dist
+on conflict (id) do nothing;
+
 insert into public.vehicle_private (vehicle_id, driver_name, driver_phone)
-select id, 'Șofer ' || plate, '+373 69 000 ' || lpad((row_number() over (order by plate))::text, 3, '0')
-from public.vehicles where company_id in (select id from public.companies where is_demo)
+select id, case body_type when 'DRONE' then 'Operator ' else 'Șofer ' end || plate,
+       '+373 69 000 ' || lpad((row_number() over (order by plate))::text, 3, '0')
+from public.vehicles
+where company_id in (select id from public.companies where is_demo) and body_type <> 'RAIL_WAGON'
 on conflict (vehicle_id) do nothing;
 
 -- Paleți EUR 120×80 plasați de la cabină spre uși, 3 pe lățime (2 la dubă).

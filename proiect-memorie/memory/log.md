@@ -93,3 +93,8 @@ acest fișier niciodată.
 - Teste: SQL 56 aserțiuni trec (PostgreSQL 16 + PostGIS local, shim Supabase în scratchpad); vitest 29; eslint, tsc și `next build` curate.
 **Rămas:** push `refresh/v2` (după instalarea aplicației GitHub sau manual de utilizator); demo seed cu o dronă și un vagon; marker de hartă diferit pentru dronă (acum folosește același desen lateral).
 **Atenționări:** Docker Hub a dat 429 la `supabase/postgres`; testele SQL au rulat pe PG16 local cu un shim minimal (auth.uid, storage, roluri) — același tip de shim e planificat în v3 (`00_local_platform.sql`).
+
+## 2026-09-26 (prânz) — Push blocat, flota demo completată
+**Discutat:** utilizatorul a instalat/reconectat aplicația GitHub, dar sesiunea tot primește 403 la push; o sesiune-copil a cerut confirmare directă, iar pornirea alteia a fost refuzată de mediu. Utilizatorul: „fă alt branch, pe acela îl șterg mai târziu; continuă dezvoltarea”.
+**Făcut:** date demo cu vagon (închiriat, 32/50 ocupate) și dronă (zonă de 5 raioane); panoul de pe hartă folosește unitatea tipului (compartimente/paleți), zona dronei și nu arată plan de podea la vagon/dronă. Teste: SQL 58, vitest 29, tsc/eslint curate.
+**Rămas:** urcarea pe GitHub (bundle → ramură nouă); planul v3 local autonom.

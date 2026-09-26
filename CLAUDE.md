@@ -39,7 +39,13 @@ Reguli generale:
 
 # MEMORIE — stare curentă
 
-_Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main; istoric curățat local, push forțat în așteptare)_
+_Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main)_
+
+## ⚠️ Stare GitHub (de verificat la începutul sesiunii)
+- Pe GitHub, `refresh/v2` e încă varianta VECHE (cap 2dc81f9, cu trailere „Co-Authored-By: Claude”).
+- Local există istoricul curățat (doar Iongutan) + commit-urile de flotă multimodală. Sesiunile cloud primesc 403 la
+  `git push` pe acest repo; utilizatorul urcă din `refresh-v2.bundle` pe o ramură NOUĂ (a cerut „alt branch”;
+  `refresh/v2` o șterge el mai târziu). Dacă ramura nouă există, continuă pe ea.
 
 ## ⚠️ DECIZIA ACTUALĂ A UTILIZATORULUI (cea mai recentă, are prioritate)
 **TOTUL ABSOLUT LOCAL, AUTONOM, FĂRĂ Docker, FĂRĂ Supabase, FĂRĂ Claude API.**
@@ -77,6 +83,7 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main; istoric c
   Constructorul pornește cu „Ce adaugi?” (scrii „vagon de tren” → tipul potrivit); vagonul și drona declară locurile
   ocupate ca număr (`set_vehicle_occupancy`), camioanele păstrează planul K7; `search_trips` întoarce `IN_AREA` pentru drone.
   Catalogul unic: `frontend/src/lib/vehicle-catalog.ts` — un tip nou = o intrare acolo + desen + valoare în CHECK-urile SQL.
+  Date demo: vagon închiriat `31 53 2458 017-2` (Ungheni, 18 libere din 50) și dronă `MDA-UAS-0042` (TransMold, zona Chișinău).
 - v2: Next.js 16 + schema SQL v2 (RLS, RPC, K1–K12, încredere/piață în 10_trust_and_market.sql), desene vehicule,
   plan paleți K7, căutare cu tranzit K4, contracte K9 cu SHA-256, dovadă foto K11. Teste: vitest 20, SQL 47, contract API 45.
 - Varianta Supabase self-hosted în Docker (`infra/local`, `OptiFleet.cmd`) funcționează, DAR utilizatorul NU o vrea

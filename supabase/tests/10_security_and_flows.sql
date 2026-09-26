@@ -32,9 +32,9 @@ set role authenticated;
 select test.act_as(:S);
 do $$ begin
   perform test.eq((select count(*) from public.companies where name = 'Carausul Neverificat')::int, 0, 'RLS: nu vede firme neverificate ale altora');
-  perform test.eq((select count(*) from public.vehicles)::int, 10, 'bursa: vede cele 10 vehicule demo listate');
+  perform test.eq((select count(*) from public.vehicles)::int, 12, 'bursa: vede cele 12 unități demo listate (10 camioane, vagon, dronă)');
   perform test.eq((select count(*) from public.vehicle_private)::int, 0, 'RLS: nu vede datele șoferilor');
-  perform test.eq((select count(*) from public.vehicles_map where lat is not null)::int, 10, 'view vehicles_map: coordonate pentru hartă');
+  perform test.eq((select count(*) from public.vehicles_map where lat is not null)::int, 12, 'view vehicles_map: coordonate pentru hartă');
   perform test.eq((public.vehicle_route('d1000000-0000-4000-8000-000000000001') ->> 'type'), 'LineString', 'vehicle_route: GeoJSON');
   perform test.eq((select count(*) from public.freight_requests)::int, 0, 'RLS: expeditorul nu vede cererile altor expeditori');
 end $$;
@@ -131,6 +131,8 @@ do $$ begin
   perform test.eq((select eta_origin < eta_destination from public.search_trips('chisinau', 'soldanesti') where plate = 'CAN 001'), true, 'K4: ora de trecere A < B');
   perform test.eq((select match_type from public.search_trips('chisinau', 'ialoveni') where plate = 'UAS 0001'), 'IN_AREA', 'dronă: găsită când A și B sunt în zona ei');
   perform test.eq((select count(*) from public.search_trips('chisinau', 'rezina') where plate = 'UAS 0001')::int, 0, 'dronă: exclusă când B e în afara zonei');
+  perform test.eq((select match_type from public.search_trips('chisinau', 'straseni') where plate = 'MDA-UAS-0042'), 'IN_AREA', 'demo: drona TransMold deservește Chișinău → Strășeni');
+  perform test.eq((select free_pallets from public.search_trips('ungheni', 'chisinau') where plate = '31 53 2458 017-2'), 18, 'demo: vagonul închiriat are 18 locuri libere');
   perform test.eq((select count(*) from public.search_trips('ungheni', 'chisinau', 11) where plate = '31 53 2458 123-4')::int, 1, 'vagon: 12 locuri libere vizibile în bursă');
 end $$;
 

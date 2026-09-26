@@ -70,6 +70,7 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
   const status = vehicle.free_pallets <= 0 && vehicle.pallet_capacity > 0 ? { t: "Ocupat", c: "badge-warn" }
     : vehicle.status === "ON_ROUTE" ? { t: "În cursă", c: "badge-accent" } : { t: "Disponibil", c: "badge-ok" };
   const own = vehicle.company_id === companyId;
+  const spec = BODY_SPECS[vehicle.body_type];
 
   return (
     <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-6 pt-3">
@@ -79,7 +80,7 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
           <span className={`badge ${status.c}`}>{status.t}</span>
         </div>
         <h2 className="t-subtitle mt-2">{vehicle.make_model}</h2>
-        <p className="t-small">{vehicle.company_name} · {BODY_SPECS[vehicle.body_type].label}{vehicle.has_reefer ? " · frigorific" : ""}</p>
+        <p className="t-small">{vehicle.company_name} · {spec.label}{vehicle.has_reefer ? " · frigorific" : ""}</p>
       </div>
 
       {myContract ? (
@@ -90,14 +91,14 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
           <Link href={`/bookings/${myContract.id}`} className="underline">Deschide</Link>
         </div>
       ) : vehicle.booked_pallets > 0 ? (
-        <p className="t-small">{vehicle.booked_pallets} paleți sunt rezervați prin contracte active.</p>
+        <p className="t-small">{vehicle.booked_pallets} {spec.placeUnit} rezervate prin contracte active.</p>
       ) : null}
 
       {vehicle.pallet_capacity > 0 && (
         <div>
           <div className="flex justify-between text-xs">
             <span className="t-label">Ocupare</span>
-            <span className="t-num">{used} / {vehicle.pallet_capacity} paleți · <strong className="text-accent-strong">{vehicle.free_pallets} liberi</strong></span>
+            <span className="t-num">{used} / {vehicle.pallet_capacity} {spec.placeUnit} · <strong className="text-accent-strong">{vehicle.free_pallets} libere</strong></span>
           </div>
           <div className="mt-1 flex h-2 overflow-hidden rounded bg-line" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Grad de ocupare">
             <div className="bg-accent" style={{ width: `${(vehicle.occupied_pallets / vehicle.pallet_capacity) * 100}%` }} />
@@ -110,10 +111,11 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
       <div className="rounded-md border border-line p-2">
         <VehicleSide
           type={vehicle.body_type} cargoLengthCm={vehicle.cargo_length_cm} cargoWidthCm={vehicle.cargo_width_cm}
-          pallets={loads.map((l) => ({ xCm: l.x_cm, lengthCm: l.length_cm, yCm: l.y_cm, reserved: l.status === "RESERVED" }))}
+          pallets={spec.loadMode === "FLOOR" ? loads.map((l) => ({ xCm: l.x_cm, lengthCm: l.length_cm, yCm: l.y_cm, reserved: l.status === "RESERVED" })) : undefined}
+          occupied={used}
           className="h-20 w-full"
         />
-        {vehicle.pallet_capacity > 0 && (
+        {spec.loadMode === "FLOOR" && vehicle.pallet_capacity > 0 && (
           <TruckCargo2D
             floor={floor}
             pallets={loads.map((l) => ({ id: l.id, x: l.x_cm, y: l.y_cm, length: l.length_cm, width: l.width_cm, format: l.format, weightKg: l.weight_kg, bookingId: l.booking_id }))}
@@ -126,7 +128,11 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
       </div>
 
       <dl className="space-y-1.5 text-[13px]">
-        <Row k="Cursă" v={vehicle.trip_origin_id ? `${districtName(vehicle.trip_origin_id)} → ${districtName(vehicle.trip_destination_id)}` : "fără cursă planificată"} />
+        {spec.needsArea ? (
+          <Row k="Zonă deservită" v={vehicle.service_district_ids.map(districtName).join(", ")} />
+        ) : (
+          <Row k="Cursă" v={vehicle.trip_origin_id ? `${districtName(vehicle.trip_origin_id)} → ${districtName(vehicle.trip_destination_id)}` : "fără cursă planificată"} />
+        )}
         {vehicle.trip_departure_at && <Row k="Plecare" v={fmtDateTime(vehicle.trip_departure_at)} />}
         {match?.eta_origin && <Row k={`Trece prin ${intent?.origin?.name ?? "A"}`} v={`${fmtTime(match.eta_origin)} (${fmtRelative(match.eta_origin)})`} />}
         {match?.eta_destination && <Row k={`Ajunge la ${intent?.destination?.name ?? "B"}`} v={fmtTime(match.eta_destination)} />}
@@ -136,7 +142,7 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
       </dl>
 
       {own ? (
-        <Link href={`/fleet/${vehicle.id}`} className="btn btn-secondary w-full">Editează vehiculul și planul</Link>
+        <Link href={`/fleet/${vehicle.id}`} className="btn btn-secondary w-full">Configurează unitatea</Link>
       ) : canShip && vehicle.pallet_capacity > 0 ? (
         <RequestPallets vehicle={vehicle} intent={intent} verified={companyVerified} companyId={companyId} />
       ) : null}
@@ -186,14 +192,14 @@ function RequestPallets({ vehicle, intent, verified, companyId }: { vehicle: Map
   if (!open) {
     return (
       <button type="button" className="btn btn-primary w-full" onClick={() => setOpen(true)} disabled={vehicle.free_pallets <= 0}>
-        {vehicle.free_pallets > 0 ? "Cere locuri pe acest vehicul" : "Nu mai are locuri libere"}
+        {vehicle.free_pallets > 0 ? "Cere locuri" : "Nu mai are locuri libere"}
       </button>
     );
   }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pallets < 1 || pallets > vehicle.free_pallets) return setError(`Între 1 și ${vehicle.free_pallets} paleți.`);
+    if (pallets < 1 || pallets > vehicle.free_pallets) return setError(`Între 1 și ${vehicle.free_pallets} ${BODY_SPECS[vehicle.body_type].placeUnit}.`);
     if (!pickup || !dropoff) return setError("Alege locul de preluare și de livrare.");
     const p = price.trim() === "" ? null : Number(price);
     if (p !== null && (!Number.isFinite(p) || p < 0)) return setError("Preț invalid.");
