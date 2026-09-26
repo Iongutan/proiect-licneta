@@ -2,3 +2,6 @@
 *.sh  text eol=lf
 *.sql text eol=lf
 *.mjs text eol=lf
+# Scripturile PowerShell au nevoie de BOM + CRLF (PowerShell 5)
+*.ps1 text eol=crlf
+*.cmd text eol=crlf

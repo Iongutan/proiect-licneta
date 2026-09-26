@@ -48,7 +48,8 @@ Tot aici: cererile expeditorilor fără mașini (`components/requests/`), grupaj
 
 Pașii detaliați sunt în [MANUAL_DE_PORNIRE.md](MANUAL_DE_PORNIRE.md). Pe scurt:
 
-1. **Supabase**: rulează în SQL Editor, în ordine, fișierele `supabase/sql/01_…` → `09_…` (plus `00_…` o singură dată, dacă proiectul are schema veche).
+0. **Local (recomandat):** o dată `bash infra/local/setup.sh --demo` din Git Bash, apoi dublu-clic pe `OptiFleet.cmd`. Planul complet: [PLAN_IMPLEMENTARE.md](PLAN_IMPLEMENTARE.md).
+1. **Supabase Cloud (alternativ)**: rulează în SQL Editor, în ordine, fișierele `supabase/sql/01_…` → `09_…` (plus `00_…` o singură dată, dacă proiectul are schema veche).
 2. **Frontend**: `cp frontend/.env.example frontend/.env.local` și completează valorile, apoi `npm --prefix frontend install` și `npm --prefix frontend run dev` → http://localhost:3000
 3. **Opțional**: `docker compose up -d` pentru OSRM (trasee reale) și `ml_service` (grupaj DBSCAN, Qwen3).
 

@@ -74,3 +74,8 @@ acest fișier niciodată.
 **Făcut:** `infra/local/` (setup.sh idempotent, override compose pe 127.0.0.1, volum Docker pentru date, start/stop/backup); schema aplicată fără erori pe Postgres 17; cont admin + 2 conturi demo verificate; frontend pe baza locală; E2E în browser real a găsit și am reparat: CSP ws, zoom inițial K3, ETA înaintea plecării. Containerele v1 oprite.
 **Rămas:** E2E idempotent în repo; pașii 2–6 din CLAUDE.md.
 **Atenționări:** Windows + Git Bash: `MSYS_NO_PATHCONV=1` strică `curl -o /dev/null` și căile `/tmp` pentru git.exe — folosește redirecționare shell și căi relative. Rularea repetată a E2E dă 409 (date existente).
+
+## 2026-09-26 (noapte, 2) — Pornire fără bash + plan în 2 părți
+**Făcut:** `OptiFleet.cmd` + `infra/local/optifleet.ps1` (start/stop/backup/status) testate; `PLAN_IMPLEMENTARE.md` (A = local acum, B = viitor); conectarea `postgres.optifleet@127.0.0.1:5432` verificată.
+**Rămas:** utilizatorul instalează pgAdmin manual (winget a eșuat: fără internet la momentul respectiv).
+**Atenționări:** PowerShell 5 — `.ps1` trebuie salvat UTF-8 cu BOM + CRLF; ieșirea Docker pe stderr se rulează prin `Invoke-Docker` (altfel NativeCommandError).

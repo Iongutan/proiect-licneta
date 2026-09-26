@@ -48,7 +48,9 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-ui
 - Teste verzi: vitest 20, SQL 38 de aserțiuni + atacuri, contract PostgREST 45 de verificări, pytest ml 15; build de producție OK.
 
 **În lucru acum:**
-- Stack LOCAL funcțional pe laptop: `bash infra/local/setup.sh --demo` (Supabase self-hosted v0.8.2, Postgres 17, doar pe 127.0.0.1).
+- Plan în 2 părți (acum local / viitor): `PLAN_IMPLEMENTARE.md` — SURSA pentru ordinea pașilor.
+- Utilizatorul pornește totul cu dublu-clic pe `OptiFleet.cmd` (start/stop/backup/status, PowerShell nativ; `bash` din PowerShell pornește WSL fără Docker!).
+- Stack LOCAL funcțional pe laptop: `bash infra/local/setup.sh --demo` (doar din Git Bash) (Supabase self-hosted v0.8.2, Postgres 17, doar pe 127.0.0.1).
   Parole în `infra/local/.credentials` (gitignored). Frontend: `npm --prefix frontend run build && npx next start -p 3000` (sau dev).
 - Test E2E cu browser real (playwright-core + Chrome) în scratchpad-ul sesiunii — NU e în repo; prima rulare a trecut
   login, hartă, căutare cu tranzit, panou vehicul, cerere de locuri, cerere nouă, constructor K6, plan K7, contracte, bursă.
