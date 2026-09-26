@@ -44,3 +44,10 @@ Format pentru fiecare decizie nouă:
 - Context: utilizatorul vrea zero costuri de servicii pentru teză și cererea de grant ODA; datele să stea pe calculatorul/serverul lui.
 - Decizie: Supabase self-hosted (open-source, Postgres 17) în Docker local; Ollama/Qwen3 local; Claude API doar pentru conversația cu clientul, cu anonimizare și plafon de cost.
 - Alternative respinse: Supabase Cloud (dependență externă); Postgres simplu cu auth scris de mână (mai mult cod, mai mult risc); AI care generează SQL (risc de scurgere prin prompt injection).
+
+## 2026-09-26 — v3: aplicație locală autonomă (înlocuiește „Supabase self-hosted în Docker”)
+- Context: utilizatorul nu vrea Docker, Supabase sau Claude; vrea pornire/oprire din IDE, PostgreSQL/PostGIS ca în teză.
+- Decizie: PostgreSQL 17 + PostGIS portabile în `.runtime/`, pornite ca proces copil al aplicației; Next.js preia auth,
+  API de date (peste RLS existent), fișiere și timp real (SSE + LISTEN/NOTIFY). Schema SQL v2 se păstrează printr-un shim.
+- Alternative respinse: Supabase în Docker (dependență, grea); PostgreSQL ca serviciu Windows (nu se oprește cu IDE-ul,
+  cere admin); PGlite/embedded-postgres (fără PostGIS garantat); rescrierea securității fără RLS (risc).

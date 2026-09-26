@@ -79,3 +79,9 @@ acest fișier niciodată.
 **Făcut:** `OptiFleet.cmd` + `infra/local/optifleet.ps1` (start/stop/backup/status) testate; `PLAN_IMPLEMENTARE.md` (A = local acum, B = viitor); conectarea `postgres.optifleet@127.0.0.1:5432` verificată.
 **Rămas:** utilizatorul instalează pgAdmin manual (winget a eșuat: fără internet la momentul respectiv).
 **Atenționări:** PowerShell 5 — `.ps1` trebuie salvat UTF-8 cu BOM + CRLF; ieșirea Docker pe stderr se rulează prin `Invoke-Docker` (altfel NativeCommandError).
+
+## 2026-09-26 (noapte, 3) — Schimbare de direcție: v3 local autonom
+**Discutat:** utilizatorul a încercat pornirea: `bash` din PowerShell → WSL fără Docker; apoi a spus că fără Docker platforma nu merge (locuri libere, configurare), apare un popup ciudat. Cere: TOTUL LOCAL, FĂRĂ Docker, FĂRĂ Supabase, FĂRĂ Claude; pornire/oprire din IDE; PostgreSQL+PostGIS ca în teză; pgAdmin pentru acces; Vercel doar demo, mai târziu.
+**Făcut înainte:** OptiFleet.cmd + optifleet.ps1 (Docker) — funcționale, dar respinse ca direcție; PLAN_IMPLEMENTARE.md (de actualizat).
+**Verificat:** internet OK; URL-urile PostgreSQL 17.6 EDB zip (330 MB) și PostGIS 3.6.2 bundle există.
+**Urmează:** planul v3 din CLAUDE.md, pașii 1–8.

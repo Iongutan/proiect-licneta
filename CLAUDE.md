@@ -41,42 +41,53 @@ Reguli generale:
 
 _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-uit)_
 
-**Ce s-a făcut până acum:**
-- v2 completă: Next.js 16 + Supabase (RLS, RPC, Realtime, Storage) + `ml_service` intern stateless + OSRM. API-ul Rust și modul demo au fost eliminate din arhitectură (vezi decisions.md).
-- Schema: `supabase/sql/00–09` (00 = reset v1, 08 = seed demo opțional).
-- K1–K12 implementate; expeditorul fără mașini postează cereri (`/requests`); desene noi de vehicule (`components/logistics/vehicle-drawing.ts`); editor de paleți K7 (`TruckCargo2D.tsx`).
-- Teste verzi: vitest 20, SQL 38 de aserțiuni + atacuri, contract PostgREST 45 de verificări, pytest ml 15; build de producție OK.
+## ⚠️ DECIZIA ACTUALĂ A UTILIZATORULUI (cea mai recentă, are prioritate)
+**TOTUL ABSOLUT LOCAL, AUTONOM, FĂRĂ Docker, FĂRĂ Supabase, FĂRĂ Claude API.**
+- Proiectul se pornește din IDE (F5 / `npm run dev`) → merge; se oprește → se oprește TOT (inclusiv baza de date).
+- Fără ferestre/popup-uri străine (utilizatorul s-a plâns de o fereastră ciudată și că fără Docker nimic nu mergea:
+  locurile libere nu se vedeau, nu se putea configura).
+- Fidel tezei: PostgreSQL + PostGIS. Acces la date printr-o aplicație normală (pgAdmin).
+- Vercel: doar eventual un demo de prezentare, mai târziu — NU prioritate.
+- Stabil, sigur, optimizat, fără „încărcări” inutile.
 
-**În lucru acum:**
-- Plan în 2 părți (acum local / viitor): `PLAN_IMPLEMENTARE.md` — SURSA pentru ordinea pașilor.
-- Utilizatorul pornește totul cu dublu-clic pe `OptiFleet.cmd` (start/stop/backup/status, PowerShell nativ; `bash` din PowerShell pornește WSL fără Docker!).
-- Stack LOCAL funcțional pe laptop: `bash infra/local/setup.sh --demo` (doar din Git Bash) (Supabase self-hosted v0.8.2, Postgres 17, doar pe 127.0.0.1).
-  Parole în `infra/local/.credentials` (gitignored). Frontend: `npm --prefix frontend run build && npx next start -p 3000` (sau dev).
-- Test E2E cu browser real (playwright-core + Chrome) în scratchpad-ul sesiunii — NU e în repo; prima rulare a trecut
-  login, hartă, căutare cu tranzit, panou vehicul, cerere de locuri, cerere nouă, constructor K6, plan K7, contracte, bursă.
-  A doua rulare pică doar din date duplicate (DMO 123 / negociere existentă) → de făcut testul idempotent și mutat în repo (`e2e/`).
-- Reparat azi: CSP permite ws:// doar pentru Supabase pe http; `upgrade-insecure-requests` doar pe https; harta pornește la zoom 7 (regiuni, K3);
-  ETA în `search_trips` nu mai poate fi înaintea plecării (aplicat și pe baza locală).
-- Containerele vechi v1 (proiect Docker `ptoirctlogistica`) au fost OPRITE (nu șterse) — ocupau portul 8000, Grafana admin/admin era expusă.
+## Planul v3 „local autonom” (în lucru)
+1. **Runtime portabil:** `npm run setup` descarcă PostgreSQL 17.6 Windows zip (EDB, conține și pgAdmin, ~330 MB,
+   URL verificat: get.enterprisedb.com/postgresql/postgresql-17.6-1-windows-x64-binaries.zip) + PostGIS bundle
+   (download.osgeo.org/postgis/windows/pg17/postgis-bundle-pg17-3.6.2x64.zip) în `.runtime/` (gitignored);
+   initdb în `.data/pg`, doar 127.0.0.1, parole aleatoare în `.data/credentials.json` (gitignored).
+2. **Pornire/oprire:** script Node care pornește `postgres.exe` ca proces COPIL (nu pg_ctl detașat) + `next dev`;
+   la oprirea din IDE se opresc amândouă.
+3. **Shim SQL** (`00_local_platform.sql`): rolurile anon/authenticated, schema `auth` (users, sessions, uid()),
+   schema `storage` (buckets, objects, foldername), publicația realtime → fișierele `supabase/sql/01–10` rămân
+   aproape neschimbate (RLS, RPC, teste).
+4. **Înlocuiri în Next.js:** auth propriu (parole scrypt din Node crypto — fără module native, pentru că Windows
+   blochează binarele .node, vezi SWC; sesiuni în DB, cookie httpOnly); `/api/db` (client tip PostgREST: tabele/coloane
+   validate din catalog, valori parametrizate, rulat ca `authenticated` cu `request.jwt.claim.sub` → RLS);
+   `/api/rpc/[fn]` cu listă albă; fișiere pe disc cu verificare prin `storage.objects` + RLS; timp real prin
+   SSE + LISTEN/NOTIFY (evenimentele trimit doar id-uri; clientul reîncarcă prin RLS).
+5. Grupaj DBSCAN portat în TypeScript (fără Python). OSRM/ML/Ollama = opționale, nu obligatorii.
+6. `devIndicators: false` în next.config (fără popup de dezvoltare).
+7. Teste: SQL pe runtime-ul portabil (fără Docker), apoi E2E în browser.
+8. De curățat după: `infra/local` (Docker), dependențele `@supabase/*`, `docker-compose.yml`, `ml_service` devine opțional.
 
-**Următorii pași (în ordine):**
-1. E2E idempotent în repo + rulare curată; capturi pentru teză.
-2. Scalare live: Realtime Broadcast pe celule, MapLibre GL + PMTiles Moldova local, poziții calde + istoric partiționat, simulator camioane + k6 (utilizatorul instalează k6 și `ollama pull bge-m3`).
-3. UI pentru recenzii / preț coridor / drum de întoarcere / documente KYC (SQL deja în 10_trust_and_market.sql).
-4. Worker AI local (Qwen3) cu rol Postgres `optifleet_worker` (fișier 11 neînceput).
-5. Asistent hibrid Claude (utilizatorul alege modelul; are nevoie de cheie API).
-6. Analiza pieței pentru teză + dosar grant ODA.
+## Ce s-a făcut până acum (istoric scurt)
+- v2: Next.js 16 + schema SQL v2 (RLS, RPC, K1–K12, încredere/piață în 10_trust_and_market.sql), desene vehicule,
+  plan paleți K7, căutare cu tranzit K4, contracte K9 cu SHA-256, dovadă foto K11. Teste: vitest 20, SQL 47, contract API 45.
+- Varianta Supabase self-hosted în Docker (`infra/local`, `OptiFleet.cmd`) funcționează, DAR utilizatorul NU o vrea
+  (Docker = dependență). Stack-ul Docker local încă există pe PC; containerele v1 vechi sunt oprite.
+- `PLAN_IMPLEMENTARE.md` (A acum / B viitor) — trebuie actualizat pentru v3 (fără Docker/Supabase/Claude).
 
-**Decizii de produs confirmate de utilizator (2026-09-26):**
-- AI hibrid: Claude API (înțelegere + răspuns) → funcții SQL fixe (fără SQL generat de AI) → Qwen3 local (analiză, raport brut JSON) → Claude (răspuns). Anonimizare înainte de API, plafon de cost, fallback local.
-- Șoferii NU au cont; doar firma. Verificarea telefonului se face la nivel de firmă (idee gratuită: bot Telegram / apel admin).
-- Scalare pentru multe vehicule live: Realtime Broadcast pe celule geografice (nu postgres_changes), MapLibre GL (WebGL), poziții „calde” separate de istoric (tabel partiționat), agregate calculate pe server, test de încărcare k6.
-- Disponibilitatea / datacenter / cluster GPU: amânate după etapa de produs.
+## Decizii de produs confirmate (rămân valabile)
+- Șoferii NU au cont; doar firma. Verificare telefon la nivel de firmă (idee gratuită: bot Telegram / apel admin).
+- AI hibrid cu Claude = amânat/opțional (utilizatorul acum nu vrea Claude). AI local Qwen3 (Ollama) = opțional.
+- Scalare viitoare: Broadcast pe celule, MapLibre GL, PMTiles local, istoric GPS partiționat, simulator + k6.
+- Server dedicat / datacenter / GPU-uri multiple = etapa B (viitor).
 
-**Note importante / capcane cunoscute:**
-- Supabase folosește claim-ul JWT `role` ca rol Postgres; rolul aplicației stă în `profiles`/`platform_admins`, nu în JWT.
-- Pe acest PC, Turbopack nu pornește (binarul SWC nativ e refuzat de Windows) → scripturile folosesc `--webpack`.
-- Imaginea `supabase/postgres:15.8.1.085` are `auth.uid()` vechi (doar `request.jwt.claim.sub`); `api-contract.sh` îl înlocuiește ca în Cloud.
-- Algoritmul de control IDNO (mod 11 din v1) NU e confirmat; se validează doar formatul (13 cifre). Verifică specificația ASP înainte de a adăuga checksum.
-- Containerele vechi din v1 (proiect Docker `ptoirctlogistica`, ex. Prometheus pe 0.0.0.0:9090) încă rulau la 2026-09-26.
-- Fișierele v1 rămase sunt stub-uri sau nefolosite; ESLint le ignoră temporar (`frontend/eslint.config.mjs`).
+## Note importante / capcane cunoscute
+- Pe acest PC: Turbopack nu pornește (binar SWC nativ refuzat de Windows) → `--webpack`; evită module native .node.
+- `bash` din PowerShell pornește WSL (fără Docker) — scripturile pentru utilizator trebuie să fie Node sau .cmd/.ps1.
+- PowerShell 5: `.ps1` în UTF-8 cu BOM + CRLF; Git Bash: `MSYS_NO_PATHCONV` strică `curl -o /dev/null` și /tmp pentru git.exe.
+- Rolul aplicației NU stă în claim-ul JWT `role`; se citește din `profiles` / `platform_admins`.
+- IDNO: se validează doar formatul (13 cifre); algoritmul de control nu e confirmat.
+- Tokenuri ML generate în `ml_service/.env` și `frontend/.env.local` (neversionate).
+- Repo-ul e pe GitHub (`Iongutan/proiect-licneta`); parolele v1 au fost în istoric → nu le refolosi.
