@@ -69,3 +69,8 @@ acest fișier niciodată.
 ## 2026-09-26 (seara) — Plan „totul local”, încredere și plată
 **Făcut:** termen de plată în contract + `confirm_payment`; `10_trust_and_market.sql`; teste noi (47 de aserțiuni pe PG15); `run.sh` acceptă `PG_IMAGE`; imaginile Supabase self-hosted v0.8.2 descărcate; cheile de test generate în scratchpad (nu în repo).
 **Rămas:** `infra/` pentru stack-ul local complet + test pe PG17; worker AI; UI pentru funcțiile din 10; scalarea live (Broadcast + MapLibre + simulator + k6); asistentul hibrid; analiza pieței.
+
+## 2026-09-26 (noapte) — Stack local complet + primul E2E real
+**Făcut:** `infra/local/` (setup.sh idempotent, override compose pe 127.0.0.1, volum Docker pentru date, start/stop/backup); schema aplicată fără erori pe Postgres 17; cont admin + 2 conturi demo verificate; frontend pe baza locală; E2E în browser real a găsit și am reparat: CSP ws, zoom inițial K3, ETA înaintea plecării. Containerele v1 oprite.
+**Rămas:** E2E idempotent în repo; pașii 2–6 din CLAUDE.md.
+**Atenționări:** Windows + Git Bash: `MSYS_NO_PATHCONV=1` strică `curl -o /dev/null` și căile `/tmp` pentru git.exe — folosește redirecționare shell și căi relative. Rularea repetată a E2E dă 409 (date existente).

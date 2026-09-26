@@ -255,14 +255,20 @@ language sql stable set search_path = public, extensions, pg_temp as $$
         when (fo is null or fd is null or fo < fd) and coalesce(off_o, 0) <= p_corridor_km and coalesce(off_d, 0) <= p_corridor_km then 'TRANSIT'
         when (fo is null or fd is null or fo < fd) then 'NEARBY'
       end as mt,
+      -- Ora de trecere nu poate fi înaintea plecării: cu GPS proaspăt se ia
+      -- maximul dintre estimarea din orar și cea din poziția curentă.
       case
         when fo is null then null
-        when fp is not null and fp <= fo then now() + make_interval(mins => ((fo - fp) * trip_duration_min)::int)
+        when fp is not null and fp <= fo then greatest(
+          trip_departure_at + make_interval(mins => (fo * trip_duration_min)::int),
+          now() + make_interval(mins => ((fo - fp) * trip_duration_min)::int))
         else trip_departure_at + make_interval(mins => (fo * trip_duration_min)::int)
       end as eta_o,
       case
         when fd is null then null
-        when fp is not null and fp <= fd then now() + make_interval(mins => ((fd - fp) * trip_duration_min)::int)
+        when fp is not null and fp <= fd then greatest(
+          trip_departure_at + make_interval(mins => (fd * trip_duration_min)::int),
+          now() + make_interval(mins => ((fd - fp) * trip_duration_min)::int))
         else trip_departure_at + make_interval(mins => (fd * trip_duration_min)::int)
       end as eta_d
     from routed r

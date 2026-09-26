@@ -20,3 +20,8 @@
 ## De verificat pe viitor
 - Specificația oficială ASP pentru cifra de control IDNO
 - MSign (semnătură electronică calificată RM) pentru contracte de valoare mare
+
+## Adăugate 2026-09-26
+- Supabase self-hosted `self-hosted/v0.8.2` (github.com/supabase/supabase/tree/master/docker) — stack local, gratuit, Apache 2.0
+- `playwright-core` + Chrome local — E2E fără descărcare de browsere
+- De evaluat pentru scalare: MapLibre GL JS, PMTiles (protomaps), deck.gl, k6, bge-m3 (Ollama)

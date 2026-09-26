@@ -1,0 +1,5 @@
+# Generat local de setup.sh — conține secrete sau date
+supabase/
+.credentials
+backups/
+.src/

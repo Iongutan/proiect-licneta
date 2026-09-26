@@ -43,7 +43,7 @@ export default function RealMoldovaMap({ vehicles, selectedId, highlightIds, rou
   const overlayRef = useRef<L.LayerGroup | null>(null);
   const bordersRef = useRef<L.GeoJSON | null>(null);
   const selectRef = useRef(onSelectVehicle);
-  const [view, setView] = useState({ zoom: 8, bounds: [26.4, 45.35, 30.3, 48.6] as [number, number, number, number] });
+  const [view, setView] = useState({ zoom: 7, bounds: [26.4, 45.35, 30.3, 48.6] as [number, number, number, number] });
 
   useEffect(() => {
     selectRef.current = onSelectVehicle;
@@ -53,7 +53,7 @@ export default function RealMoldovaMap({ vehicles, selectedId, highlightIds, rou
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
-      center: MOLDOVA_CENTER, zoom: 8, minZoom: 7, maxZoom: 17,
+      center: MOLDOVA_CENTER, zoom: 7, minZoom: 6, maxZoom: 17,
       maxBounds: MOLDOVA_BOUNDS.pad(0.6), zoomControl: false,
     });
     L.control.zoom({ position: "bottomright" }).addTo(map);

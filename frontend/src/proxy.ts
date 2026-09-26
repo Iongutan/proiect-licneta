@@ -21,13 +21,14 @@ function contentSecurityPolicy(nonce: string): string {
     "style-src-attr 'unsafe-inline'",
     `img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org ${supabase.origin}`,
     "font-src 'self'",
-    `connect-src 'self' ${supabase.origin} wss://${supabase.host}${dev ? " ws:" : ""}`,
+    // Realtime: wss pentru https (producție), ws doar pentru baza locală pe http.
+    `connect-src 'self' ${supabase.origin} ${supabase.protocol === "https:" ? "wss" : "ws"}://${supabase.host}${dev ? " ws:" : ""}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    ...(dev ? [] : ["upgrade-insecure-requests"]),
+    ...(dev || supabase.protocol !== "https:" ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 

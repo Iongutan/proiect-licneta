@@ -1,0 +1,39 @@
+# OptiFleet — suprascrieri peste docker-compose.yml oficial Supabase (self-hosted v0.8.2).
+# Se aplică automat prin COMPOSE_FILE din .env (setat de setup.sh).
+#
+#  • toate porturile ascultă DOAR pe 127.0.0.1 (nimic nu e accesibil din rețea)
+#  • datele Postgres stau într-un volum Docker (pe Windows, folderele legate
+#    direct au probleme de permisiuni pentru Postgres)
+#  • parole de minim 10 caractere, fără înregistrare prin telefon
+
+services:
+  api-gw:
+    ports: !override
+      - "127.0.0.1:${API_GW_HTTP_PORT:-8000}:8000/tcp"
+
+  supavisor:
+    ports: !override
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POOLER_PROXY_PORT_TRANSACTION}:6543"
+
+  auth:
+    environment:
+      GOTRUE_PASSWORD_MIN_LENGTH: "10"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_SMS_AUTOCONFIRM: "false"
+
+  db:
+    volumes: !override
+      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - optifleet-db-data:/var/lib/postgresql/data
+      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
+      - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
+      - db-config:/etc/postgresql-custom
+
+volumes:
+  optifleet-db-data:
+    name: optifleet-db-data
