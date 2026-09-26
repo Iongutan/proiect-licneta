@@ -2,7 +2,9 @@
 // Coloanele geografice vin prin PostgREST ca GeoJSON sau EWKB hex — de aceea
 // le citim prin coloane calculate în interogări (lat/lon) sau le ignorăm.
 
-export type BodyType = "VAN" | "RIGID" | "CURTAINSIDE" | "REEFER" | "ROAD_TRAIN" | "LOWBED";
+export type BodyType = "VAN" | "RIGID" | "CURTAINSIDE" | "REEFER" | "ROAD_TRAIN" | "LOWBED" | "RAIL_WAGON" | "DRONE";
+export type TransportMode = "ROAD" | "RAIL" | "AIR";
+export type Ownership = "OWNED" | "LEASED" | "RENTED";
 export type CompanyKind = "SHIPPER" | "CARRIER" | "BOTH";
 export type LegalForm = "SRL" | "II" | "SA" | "GT" | "ALTA";
 export type KycStatus = "PENDING" | "VERIFIED" | "REJECTED";
@@ -69,6 +71,10 @@ export interface Vehicle {
   booked_weight_kg: number;
   free_pallets: number;
   updated_at: string;
+  transport_mode: TransportMode;
+  ownership: Ownership;
+  ownership_until: string | null;
+  service_district_ids: string[];
 }
 
 /** Rândul din vehicles_map (vezi fetchMapVehicles): vehicul + coordonate + firmă. */
@@ -191,7 +197,7 @@ export interface Notification {
 
 export interface TripMatch {
   vehicle_id: string;
-  match_type: "DIRECT" | "TRANSIT" | "NEARBY" | "AT_ORIGIN";
+  match_type: "DIRECT" | "TRANSIT" | "NEARBY" | "AT_ORIGIN" | "IN_AREA";
   eta_origin: string | null;
   eta_destination: string | null;
   offset_km: number;

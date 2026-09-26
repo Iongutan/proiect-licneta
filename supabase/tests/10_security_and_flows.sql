@@ -75,6 +75,42 @@ end $$;
 select test.expect_error($$select public.save_vehicle_layout((select id from public.vehicles where plate = 'CAN 001'), '[]')$$, 'fără drept');
 select public.set_vehicle_trip((select id from public.vehicles where plate = 'TST 100'), 'chisinau', 'soroca', now() + interval '1 hour');
 
+-- ─── Flotă multimodală: vagon de tren și dronă în aceeași flotă ───────────
+insert into public.vehicles (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm,
+                             max_payload_kg, pallet_capacity, ownership, ownership_until, district_id)
+values (public.current_company_id(), '31 53 2458 123-4', 'Vagon acoperit Habbins', 'RAIL_WAGON', 2200, 280, 260,
+        60000, 50, 'RENTED', current_date + 90, 'ungheni');
+select test.expect_error($$insert into public.vehicles (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm, max_payload_kg, pallet_capacity, district_id)
+  values (public.current_company_id(), '31 53 2458 999-9', 'Camion lung', 'CURTAINSIDE', 1360, 245, 270, 24000, 33, 'chisinau')$$, 'vehicles_limits_by_type');
+select test.expect_error($$insert into public.vehicles (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm, max_payload_kg, pallet_capacity, service_district_ids, district_id)
+  values (public.current_company_id(), 'UAS 0001', 'Drona grea', 'DRONE', 70, 50, 40, 2000, 2, '{chisinau}', 'chisinau')$$, 'vehicles_limits_by_type');
+select test.expect_error($$insert into public.vehicles (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm, max_payload_kg, pallet_capacity, district_id)
+  values (public.current_company_id(), 'UAS 0001', 'DJI FlyCart 30', 'DRONE', 70, 50, 40, 30, 2, 'chisinau')$$, 'vehicles_drone_has_area');
+select test.expect_error($$insert into public.vehicles (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm, max_payload_kg, pallet_capacity, service_district_ids, district_id)
+  values (public.current_company_id(), 'UAS 0001', 'DJI FlyCart 30', 'DRONE', 70, 50, 40, 30, 2, '{chisinau,atlantida}', 'chisinau')$$, 'atlantida');
+insert into public.vehicles (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm,
+                             max_payload_kg, pallet_capacity, service_district_ids, district_id, position)
+values (public.current_company_id(), 'UAS 0001', 'DJI FlyCart 30', 'DRONE', 70, 50, 40, 30, 2,
+        '{ialoveni,chisinau,chisinau}', 'chisinau', 'SRID=4326;POINT(28.86 47.01)');
+select test.expect_error($$update public.vehicles set ownership_until = current_date where plate = 'UAS 0001'$$, 'vehicles_owned_no_until');
+
+select test.expect_error($$select public.save_vehicle_layout((select id from public.vehicles where plate = '31 53 2458 123-4'),
+  '[{"x_cm":0,"y_cm":0,"length_cm":120,"width_cm":80,"format":"EUR","weight_kg":500}]')$$, 'ca număr');
+select test.expect_error($$select public.set_vehicle_occupancy((select id from public.vehicles where plate = 'TST 100'), 1, 100)$$, 'plan de încărcare');
+select test.expect_error($$select public.set_vehicle_occupancy((select id from public.vehicles where plate = '31 53 2458 123-4'), 51, 1000)$$, 'Capacitate depășită');
+select test.expect_error($$select public.set_vehicle_occupancy((select id from public.vehicles where plate = '31 53 2458 123-4'), 10, 70000)$$, 'Sarcină depășită');
+select test.expect_error($$select public.set_vehicle_occupancy((select id from public.vehicles where plate = 'CAN 001'), 1, 100)$$, 'fără drept');
+select public.set_vehicle_occupancy((select id from public.vehicles where plate = '31 53 2458 123-4'), 38, 22800);
+do $$ begin
+  perform test.eq((select free_pallets from public.vehicles where plate = '31 53 2458 123-4'), 12, 'vagon: 38 ocupate din 50 → 12 libere');
+  perform test.eq((select transport_mode from public.vehicles_map where plate = '31 53 2458 123-4'), 'RAIL', 'vagon: mod feroviar derivat din tip');
+  perform test.eq((select ownership from public.vehicles_map where plate = '31 53 2458 123-4'), 'RENTED', 'vagon: închiriat');
+  perform test.eq((select service_district_ids from public.vehicles where plate = 'UAS 0001'), array['chisinau', 'ialoveni'], 'dronă: zona fără dubluri, sortată');
+  perform test.eq((select transport_mode from public.vehicles where plate = 'UAS 0001'), 'AIR', 'dronă: mod aerian');
+  perform test.eq((select count(distinct transport_mode) from public.vehicles where company_id = public.current_company_id())::int, 3,
+                  'o singură flotă a firmei: rutier + feroviar + aerian');
+end $$;
+
 -- Transportatorul vede bursa de cereri (e verificat)
 do $$ begin
   perform test.eq((select count(*) from public.freight_requests where status = 'OPEN')::int, 4, 'bursă: transportatorul verificat vede cererile deschise');
@@ -93,6 +129,9 @@ do $$ begin
   perform test.eq((select match_type from public.search_trips('leova', 'chisinau') where plate = 'LVA 881'), 'AT_ORIGIN', 'K4: camion liber aflat chiar în raionul de plecare');
   perform test.eq((select count(*) from public.search_trips('chisinau', 'rezina', 0, false) where match_type <> 'DIRECT')::int, 0, 'K4: fără „tranzit” doar curse directe');
   perform test.eq((select eta_origin < eta_destination from public.search_trips('chisinau', 'soldanesti') where plate = 'CAN 001'), true, 'K4: ora de trecere A < B');
+  perform test.eq((select match_type from public.search_trips('chisinau', 'ialoveni') where plate = 'UAS 0001'), 'IN_AREA', 'dronă: găsită când A și B sunt în zona ei');
+  perform test.eq((select count(*) from public.search_trips('chisinau', 'rezina') where plate = 'UAS 0001')::int, 0, 'dronă: exclusă când B e în afara zonei');
+  perform test.eq((select count(*) from public.search_trips('ungheni', 'chisinau', 11) where plate = '31 53 2458 123-4')::int, 1, 'vagon: 12 locuri libere vizibile în bursă');
 end $$;
 
 -- ─── Negociere + contract Calea A (K8, K9, K12) ───────────────────────────

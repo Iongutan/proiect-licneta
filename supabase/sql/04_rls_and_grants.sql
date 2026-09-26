@@ -69,11 +69,13 @@ create policy platform_admins_self on public.platform_admins for select to authe
 grant select on public.vehicles to authenticated;
 grant insert (company_id, plate, make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm,
               max_payload_kg, pallet_capacity, has_reefer, price_per_km, gps_device_id, gps_protocol,
-              status, is_listed, position, district_id, position_at)
+              status, is_listed, position, district_id, position_at,
+              ownership, ownership_until, service_district_ids)
   on public.vehicles to authenticated;
 grant update (make_model, body_type, cargo_length_cm, cargo_width_cm, cargo_height_cm, max_payload_kg,
               pallet_capacity, has_reefer, price_per_km, gps_device_id, gps_protocol, status, is_listed,
-              position, district_id, speed_kmh, heading, position_at)
+              position, district_id, speed_kmh, heading, position_at,
+              ownership, ownership_until, service_district_ids)
   on public.vehicles to authenticated;
 grant delete on public.vehicles to authenticated;
 

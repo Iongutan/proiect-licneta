@@ -10,6 +10,13 @@ export function fmtDateTime(iso: string | null | undefined): string {
   return iso ? dateTime.format(new Date(iso)) : "—";
 }
 
+const dateOnly = new Intl.DateTimeFormat("ro-MD", { day: "2-digit", month: "short", year: "numeric", timeZone: TZ });
+
+/** Dată calendaristică „2026-12-31” (coloană date) → „31 dec. 2026”. */
+export function fmtDate(isoDate: string | null | undefined): string {
+  return isoDate ? dateOnly.format(new Date(`${isoDate.slice(0, 10)}T12:00:00Z`)) : "—";
+}
+
 export function fmtTime(iso: string | null | undefined): string {
   return iso ? timeOnly.format(new Date(iso)) : "—";
 }

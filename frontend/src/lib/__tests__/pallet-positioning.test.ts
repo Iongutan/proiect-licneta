@@ -57,7 +57,7 @@ describe("K7 — plasare paleți", () => {
   });
 
   it("capacitatea implicită din catalog încape geometric", () => {
-    for (const type of BODY_TYPES) {
+    for (const type of BODY_TYPES.filter((t) => BODY_SPECS[t].loadMode !== "COUNT")) {
       const s = BODY_SPECS[type];
       expect(s.pallets).toBeLessThanOrEqual(geometricCapacity({ bodyType: type, lengthCm: s.lengthCm, widthCm: s.widthCm }));
     }

@@ -25,6 +25,9 @@ begin
   if not found or v.company_id is distinct from public.current_company_id() then
     raise exception 'Vehicul inexistent sau fără drept de modificare.' using errcode = '42501';
   end if;
+  if v.body_type in ('RAIL_WAGON', 'DRONE') then
+    raise exception 'Pentru vagon și dronă locurile ocupate se declară ca număr, fără plan de podea.' using errcode = '22023';
+  end if;
   if jsonb_typeof(p_items) is distinct from 'array' then
     raise exception 'Format invalid pentru planul de încărcare.' using errcode = '22023';
   end if;
@@ -95,6 +98,40 @@ begin
 
   perform public.log_audit(v.company_id, 'LAYOUT_SAVED', 'vehicle', v.id,
     jsonb_build_object('pallets', v_count, 'own_weight_kg', v_own_kg));
+end $$;
+
+-- Vagon și dronă: locurile ocupate se declară în bloc (număr + greutate), nu
+-- palet cu palet. Rezervările prin contract (booked_*) rămân separate.
+create function public.set_vehicle_occupancy(p_vehicle uuid, p_places int, p_weight_kg int) returns void
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
+declare
+  v public.vehicles;
+begin
+  select * into v from public.vehicles where id = p_vehicle for update;
+  if not found or v.company_id is distinct from public.current_company_id() then
+    raise exception 'Vehicul inexistent sau fără drept de modificare.' using errcode = '42501';
+  end if;
+  if v.body_type not in ('RAIL_WAGON', 'DRONE') then
+    raise exception 'Acest vehicul are plan de încărcare; locurile ocupate se setează din plan.' using errcode = '22023';
+  end if;
+  if p_places is null or p_weight_kg is null or p_places < 0 or p_weight_kg < 0 then
+    raise exception 'Numărul de locuri și greutatea trebuie să fie pozitive.' using errcode = '22023';
+  end if;
+  if p_places = 0 and p_weight_kg > 0 then
+    raise exception 'Greutate declarată fără niciun loc ocupat.' using errcode = '22023';
+  end if;
+  if p_places + v.booked_pallets > v.pallet_capacity then
+    raise exception 'Capacitate depășită: % ocupate + % rezervate > % locuri.',
+      p_places, v.booked_pallets, v.pallet_capacity using errcode = '22023';
+  end if;
+  if p_weight_kg + v.booked_weight_kg > v.max_payload_kg then
+    raise exception 'Sarcină depășită: % kg > % kg admiși.', p_weight_kg + v.booked_weight_kg, v.max_payload_kg
+      using errcode = '22023';
+  end if;
+
+  update public.vehicles set occupied_pallets = p_places, occupied_weight_kg = p_weight_kg where id = v.id;
+  perform public.log_audit(v.company_id, 'OCCUPANCY_SET', 'vehicle', v.id,
+    jsonb_build_object('places', p_places, 'weight_kg', p_weight_kg));
 end $$;
 
 -- Cursa planificată. p_route = GeoJSON LineString (de la OSRM); dacă lipsește
@@ -211,6 +248,7 @@ end $$;
 -- TRANSIT  – traseul trece la ≤ p_corridor_km de A și de B, în ordinea corectă
 -- NEARBY   – trece la ≤ 2×p_corridor_km (vehicul „adiacent”, cu mic ocol)
 -- AT_ORIGIN – vehicul liber, fără cursă, aflat acum în raionul A
+-- IN_AREA  – unitate cu zonă deservită (dronă) care acoperă și A, și B
 -- Filtru de capacitate STRICT: free_pallets > p_min_free (K4.3).
 -- SECURITY INVOKER: RLS decide ce vehicule vede apelantul.
 create function public.search_trips(
@@ -286,12 +324,20 @@ language sql stable set search_path = public, extensions, pg_temp as $$
            pallet_capacity, price_per_km, position, trip_origin_id, trip_destination_id, trip_departure_at
     from base
     where p_origin is not null and trip_route is null and status = 'AVAILABLE' and district_id = p_origin
+      and cardinality(service_district_ids) = 0
+    union all
+    select id, 'IN_AREA', null, null, 0, plate, make_model, body_type, company_id, company_name, free_pallets,
+           pallet_capacity, price_per_km, position, trip_origin_id, trip_destination_id, trip_departure_at
+    from base
+    where trip_route is null and status = 'AVAILABLE' and cardinality(service_district_ids) > 0
+      and (p_origin is null or p_origin = any (service_district_ids))
+      and (p_destination is null or p_destination = any (service_district_ids))
   )
   select id, mt, eta_o, eta_d, off_km, plate, make_model, body_type, company_id, company_name, free_pallets,
          pallet_capacity, price_per_km, ST_Y(position::geometry), ST_X(position::geometry),
          trip_origin_id, trip_destination_id, trip_departure_at
   from matches
-  order by array_position(array['DIRECT', 'TRANSIT', 'AT_ORIGIN', 'NEARBY'], mt), eta_o nulls last, off_km
+  order by array_position(array['DIRECT', 'TRANSIT', 'AT_ORIGIN', 'IN_AREA', 'NEARBY'], mt), eta_o nulls last, off_km
   limit 100
 $$;
 
@@ -825,9 +871,9 @@ begin
     select p.oid::regprocedure from pg_proc p
     where p.pronamespace = 'public'::regnamespace
       and p.proname in ('current_company_id', 'is_platform_admin', 'is_company_admin', 'current_company_is_verified',
-                        'log_audit', 'notify_company', 'touch_updated_at', 'handle_new_user',
+                        'log_audit', 'notify_company', 'touch_updated_at', 'handle_new_user', 'vehicles_normalize_area',
                         'refresh_vehicle_occupancy', 'vehicle_loads_changed', 'booking_message_price',
-                        'save_vehicle_layout', 'set_vehicle_trip', 'clear_vehicle_trip', 'issue_device_token',
+                        'save_vehicle_layout', 'set_vehicle_occupancy', 'set_vehicle_trip', 'clear_vehicle_trip', 'issue_device_token',
                         'ingest_position', 'search_trips', 'vehicles_passing_near_me', '_booking_side',
                         '_reserve_capacity', '_release_capacity', 'propose_booking', 'accept_price',
                         'choose_contract_path', 'sign_booking', 'start_transit', 'record_delivery_proof', 'confirm_payment',
@@ -843,6 +889,7 @@ grant execute on function public.is_platform_admin()           to authenticated;
 grant execute on function public.is_company_admin()            to authenticated;
 grant execute on function public.current_company_is_verified() to authenticated;
 grant execute on function public.save_vehicle_layout(uuid, jsonb)                                     to authenticated;
+grant execute on function public.set_vehicle_occupancy(uuid, int, int)                                to authenticated;
 grant execute on function public.set_vehicle_trip(uuid, text, text, timestamptz, jsonb, numeric, int)  to authenticated;
 grant execute on function public.clear_vehicle_trip(uuid)                                             to authenticated;
 grant execute on function public.issue_device_token(uuid)                                             to authenticated;

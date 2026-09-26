@@ -101,6 +101,23 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- ─── Zona deservită: raioane existente, fără dubluri, sortate ─────────────
+create function public.vehicles_normalize_area() returns trigger
+language plpgsql set search_path = public, extensions, pg_temp as $$
+declare v_bad text;
+begin
+  select x into v_bad from unnest(new.service_district_ids) x
+  where not exists (select 1 from public.districts d where d.id = x) limit 1;
+  if v_bad is not null then
+    raise exception 'Raion necunoscut în zona deservită: %.', v_bad using errcode = '23503';
+  end if;
+  new.service_district_ids := array(select distinct x from unnest(new.service_district_ids) x order by x);
+  return new;
+end $$;
+
+create trigger vehicles_area before insert or update of service_district_ids on public.vehicles
+  for each row execute function public.vehicles_normalize_area();
+
 -- ─── Agregare încărcătură pe vehicul (paleți proprii ai transportatorului) ─
 create function public.refresh_vehicle_occupancy(p_vehicle uuid) returns void
 language sql security definer set search_path = public, extensions, pg_temp as $$

@@ -50,19 +50,32 @@ create table public.platform_admins (
   created_at  timestamptz not null default now()
 );
 
--- ─── Vehicule ─────────────────────────────────────────────────────────────
+-- ─── Unități de transport (flota firmei) ─────────────────────────────────
+-- Un singur tabel pentru orice tip: camion, vagon de tren, dronă. Tipul
+-- (body_type) decide limitele fizice și cum se declară locurile ocupate:
+-- plan de podea (K7) la rutiere, număr simplu la vagon și dronă.
+-- „plate” = identificatorul unității: nr. de înmatriculare, nr. vagon, serie dronă.
+-- „pallet_capacity” = locuri: paleți EUR, respectiv compartimente la dronă.
 create table public.vehicles (
   id                  uuid primary key default gen_random_uuid(),
   company_id          uuid not null references public.companies (id) on delete cascade,
-  plate               text not null unique check (plate ~ '^[A-Z0-9][A-Z0-9 -]{2,11}$'),
+  plate               text not null unique check (plate ~ '^[A-Z0-9][A-Z0-9 -]{2,19}$'),
   make_model          text not null check (char_length(btrim(make_model)) between 2 and 80),
-  body_type           text not null check (body_type in ('VAN', 'RIGID', 'CURTAINSIDE', 'REEFER', 'ROAD_TRAIN', 'LOWBED')),
-  cargo_length_cm     integer not null check (cargo_length_cm between 150 and 2000),
-  cargo_width_cm      integer not null check (cargo_width_cm between 100 and 260),
-  cargo_height_cm     integer not null check (cargo_height_cm between 80 and 320),
-  max_payload_kg      integer not null check (max_payload_kg between 300 and 44000),
-  pallet_capacity     integer not null check (pallet_capacity between 0 and 66),
+  body_type           text not null check (body_type in ('VAN', 'RIGID', 'CURTAINSIDE', 'REEFER', 'ROAD_TRAIN', 'LOWBED',
+                                                         'RAIL_WAGON', 'DRONE')),
+  transport_mode      text generated always as (
+                        case body_type when 'RAIL_WAGON' then 'RAIL' when 'DRONE' then 'AIR' else 'ROAD' end
+                      ) stored,
+  cargo_length_cm     integer not null check (cargo_length_cm between 10 and 2800),
+  cargo_width_cm      integer not null check (cargo_width_cm between 10 and 320),
+  cargo_height_cm     integer not null check (cargo_height_cm between 5 and 350),
+  max_payload_kg      integer not null check (max_payload_kg between 1 and 90000),
+  pallet_capacity     integer not null check (pallet_capacity between 0 and 80),
   has_reefer          boolean not null default false,
+  ownership           text not null default 'OWNED' check (ownership in ('OWNED', 'LEASED', 'RENTED')),
+  ownership_until     date,
+  -- Raioanele deservite (obligatoriu la dronă; validate de trigger contra districts).
+  service_district_ids text[] not null default '{}' check (cardinality(service_district_ids) <= 40),
   price_per_km        numeric(8, 2) check (price_per_km between 0 and 500),
   gps_device_id       text check (char_length(gps_device_id) <= 64),
   gps_protocol        text not null default 'MANUAL' check (gps_protocol in ('TELTONIKA', 'CONCOX', 'WIALON', 'MANUAL')),
@@ -97,7 +110,18 @@ create table public.vehicles (
   constraint vehicles_capacity_not_exceeded check (occupied_pallets + booked_pallets <= pallet_capacity),
   constraint vehicles_payload_not_exceeded  check (occupied_weight_kg + booked_weight_kg <= max_payload_kg),
   constraint vehicles_trip_distinct         check (trip_origin_id is null or trip_origin_id <> trip_destination_id),
-  constraint vehicles_lowbed_no_pallets     check (body_type <> 'LOWBED' or pallet_capacity = 0)
+  constraint vehicles_lowbed_no_pallets     check (body_type <> 'LOWBED' or pallet_capacity = 0),
+  constraint vehicles_limits_by_type        check (case body_type
+    when 'DRONE' then cargo_length_cm between 10 and 200 and cargo_width_cm between 10 and 200
+                  and cargo_height_cm between 5 and 150 and max_payload_kg between 1 and 500 and pallet_capacity between 1 and 20
+    when 'RAIL_WAGON' then cargo_length_cm between 1000 and 2800 and cargo_width_cm between 200 and 320
+                  and cargo_height_cm between 150 and 350 and max_payload_kg between 5000 and 90000 and pallet_capacity between 0 and 80
+    else plate ~ '^[A-Z0-9][A-Z0-9 -]{2,11}$'
+                  and cargo_length_cm between 150 and 2000 and cargo_width_cm between 100 and 260
+                  and cargo_height_cm between 80 and 320 and max_payload_kg between 300 and 44000 and pallet_capacity between 0 and 66
+  end),
+  constraint vehicles_drone_has_area        check (body_type <> 'DRONE' or cardinality(service_district_ids) >= 1),
+  constraint vehicles_owned_no_until        check (ownership <> 'OWNED' or ownership_until is null)
 );
 create index vehicles_company_idx   on public.vehicles (company_id);
 create index vehicles_position_gix  on public.vehicles using gist (position);
@@ -133,7 +157,8 @@ create table public.freight_requests (
   pallets                  integer not null check (pallets between 1 and 66),
   pallet_format            text not null default 'EUR' check (pallet_format in ('EUR', 'INDUSTRIAL', 'MIXED')),
   weight_kg                integer not null check (weight_kg between 1 and 44000),
-  body_type                text check (body_type in ('VAN', 'RIGID', 'CURTAINSIDE', 'REEFER', 'ROAD_TRAIN', 'LOWBED')),
+  body_type                text check (body_type in ('VAN', 'RIGID', 'CURTAINSIDE', 'REEFER', 'ROAD_TRAIN', 'LOWBED',
+                                                    'RAIL_WAGON', 'DRONE')),
   needs_reefer             boolean not null default false,
   vehicles_needed          smallint not null default 1 check (vehicles_needed between 1 and 20),
   ready_from               timestamptz not null,

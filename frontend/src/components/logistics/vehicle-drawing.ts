@@ -132,6 +132,46 @@ function lowbed(): Drawing {
   };
 }
 
+// Vagon acoperit pe două boghiuri; ușile glisante la mijloc.
+function railWagon(): Drawing {
+  return {
+    width: 540, height: 150,
+    shapes: [
+      "M40 30 H500 V104 H40 Z",
+      "M30 104 H510 V112 H30 Z",
+      "M18 99 h12 v10 h-12 Z",
+      "M510 99 h12 v10 h-12 Z",
+    ],
+    details: ["M72 112 H148", "M392 112 H468"],
+    faint: ["M44 38 H496", "M200 34 V102", "M270 34 V102", "M340 34 V102"],
+    load: [],
+    wheels: [{ cx: 88, r: 12 }, { cx: 132, r: 12 }, { cx: 408, r: 12 }, { cx: 452, r: 12 }],
+    boxes: [{ x0: 44, x1: 496, top: 36, bottom: 100 }],
+  };
+}
+
+// Dronă cu patru rotoare (două în profil) și cutia de marfă suspendată.
+function drone(): Drawing {
+  return {
+    width: 300, height: 150,
+    shapes: [
+      "M112 56 H188 Q200 56 200 68 V80 H100 V68 Q100 56 112 56 Z",
+      "M14 46 H66 V51 H14 Z",
+      "M234 46 H286 V51 H234 Z",
+      "M122 90 H178 V120 H122 Z",
+    ],
+    details: [
+      "M100 66 H40", "M200 66 H260", "M40 66 V51", "M260 66 V51",
+      "M140 80 V90", "M160 80 V90",
+      "M116 80 L102 131", "M184 80 L198 131", "M88 131 H116", "M184 131 H212",
+    ],
+    faint: ["M112 64 H188"],
+    load: [],
+    wheels: [],
+    boxes: [{ x0: 124, x1: 176, top: 92, bottom: 118 }],
+  };
+}
+
 export function vehicleDrawing(type: BodyType): Drawing {
   switch (type) {
     case "VAN": return van();
@@ -140,6 +180,8 @@ export function vehicleDrawing(type: BodyType): Drawing {
     case "REEFER": return semi("REEFER");
     case "ROAD_TRAIN": return roadTrain();
     case "LOWBED": return lowbed();
+    case "RAIL_WAGON": return railWagon();
+    case "DRONE": return drone();
   }
 }
 
@@ -187,6 +229,8 @@ export function projectPallets(drawing: Drawing, pallets: SidePallet[], cargoLen
 /** Când nu avem planul exact (ex. marker), umplem de la cabină spre uși. */
 export function approximatePallets(type: BodyType, occupied: number, cargoLengthCm: number, cargoWidthCm: number): SidePallet[] {
   if (type === "LOWBED" || occupied <= 0) return [];
+  // Dronă: cutia de marfă apare plină când are cel puțin un compartiment ocupat.
+  if (type === "DRONE") return [{ xCm: 0, lengthCm: cargoLengthCm, yCm: 0 }];
   const across = Math.max(1, Math.floor(cargoWidthCm / 80));
   const half = type === "ROAD_TRAIN" ? cargoLengthCm / 2 : cargoLengthCm;
   const perBoxCols = Math.max(1, Math.floor(half / 120));

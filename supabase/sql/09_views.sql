@@ -13,7 +13,7 @@ select v.id, v.company_id, c.name as company_name, v.plate, v.make_model, v.body
        ST_Y(v.position::geometry) as lat, ST_X(v.position::geometry) as lon,
        v.trip_origin_id, v.trip_destination_id, v.trip_departure_at, v.trip_distance_km, v.trip_duration_min,
        v.occupied_pallets, v.occupied_weight_kg, v.booked_pallets, v.booked_weight_kg, v.free_pallets,
-       v.updated_at
+       v.updated_at, v.transport_mode, v.ownership, v.ownership_until, v.service_district_ids
 from public.vehicles v
 join public.companies c on c.id = v.company_id;
 

@@ -39,7 +39,7 @@ Reguli generale:
 
 # MEMORIE — stare curentă
 
-_Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-uit)_
+_Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main; istoric curățat local, push forțat în așteptare)_
 
 ## ⚠️ DECIZIA ACTUALĂ A UTILIZATORULUI (cea mai recentă, are prioritate)
 **TOTUL ABSOLUT LOCAL, AUTONOM, FĂRĂ Docker, FĂRĂ Supabase, FĂRĂ Claude API.**
@@ -71,6 +71,12 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-ui
 8. De curățat după: `infra/local` (Docker), dependențele `@supabase/*`, `docker-compose.yml`, `ml_service` devine opțional.
 
 ## Ce s-a făcut până acum (istoric scurt)
+- **Flotă multimodală (o singură flotă a SRL-ului, o singură interfață):** tipuri noi `RAIL_WAGON` (vagon de tren,
+  propriu/închiriat) și `DRONE` (deservește o zonă de raioane) în același tabel `vehicles`, cu `transport_mode` derivat,
+  `ownership` (+ `ownership_until`), `service_district_ids`; limite pe tip în `vehicles_limits_by_type`.
+  Constructorul pornește cu „Ce adaugi?” (scrii „vagon de tren” → tipul potrivit); vagonul și drona declară locurile
+  ocupate ca număr (`set_vehicle_occupancy`), camioanele păstrează planul K7; `search_trips` întoarce `IN_AREA` pentru drone.
+  Catalogul unic: `frontend/src/lib/vehicle-catalog.ts` — un tip nou = o intrare acolo + desen + valoare în CHECK-urile SQL.
 - v2: Next.js 16 + schema SQL v2 (RLS, RPC, K1–K12, încredere/piață în 10_trust_and_market.sql), desene vehicule,
   plan paleți K7, căutare cu tranzit K4, contracte K9 cu SHA-256, dovadă foto K11. Teste: vitest 20, SQL 47, contract API 45.
 - Varianta Supabase self-hosted în Docker (`infra/local`, `OptiFleet.cmd`) funcționează, DAR utilizatorul NU o vrea
@@ -84,6 +90,8 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-ui
 - Server dedicat / datacenter / GPU-uri multiple = etapa B (viitor).
 
 ## Note importante / capcane cunoscute
+- Git: commit-urile se fac doar pe numele utilizatorului (Iongutan <ion.gutan@isa.utm.md>), fără rânduri
+  „Co-Authored-By”/„Claude-Session” în mesaje (cerință explicită).
 - Pe acest PC: Turbopack nu pornește (binar SWC nativ refuzat de Windows) → `--webpack`; evită module native .node.
 - `bash` din PowerShell pornește WSL (fără Docker) — scripturile pentru utilizator trebuie să fie Node sau .cmd/.ps1.
 - PowerShell 5: `.ps1` în UTF-8 cu BOM + CRLF; Git Bash: `MSYS_NO_PATHCONV` strică `curl -o /dev/null` și /tmp pentru git.exe.

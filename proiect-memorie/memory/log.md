@@ -85,3 +85,11 @@ acest fișier niciodată.
 **Făcut înainte:** OptiFleet.cmd + optifleet.ps1 (Docker) — funcționale, dar respinse ca direcție; PLAN_IMPLEMENTARE.md (de actualizat).
 **Verificat:** internet OK; URL-urile PostgreSQL 17.6 EDB zip (330 MB) și PostGIS 3.6.2 bundle există.
 **Urmează:** planul v3 din CLAUDE.md, pașii 1–8.
+
+## 2026-09-26 (dimineață) — Flotă multimodală + istoric git curățat
+**Făcut:**
+- Istoricul `refresh/v2` rescris local: toate commit-urile doar pe numele Iongutan, fără „Co-Authored-By: Claude” (conținut identic, verificat cu `git diff`). Push-ul forțat a eșuat cu 403: aplicația GitHub nu are drept de scriere pe repo.
+- Flotă multimodală: vagon de tren și dronă în aceeași flotă (SQL 02/03/04/05/09, catalog, constructor „Ce adaugi?”, listă cu filtru pe mod și pictogramă de configurare, contor de locuri pentru vagon/dronă, zonă deservită pentru dronă, desene noi).
+- Teste: SQL 56 aserțiuni trec (PostgreSQL 16 + PostGIS local, shim Supabase în scratchpad); vitest 29; eslint, tsc și `next build` curate.
+**Rămas:** push `refresh/v2` (după instalarea aplicației GitHub sau manual de utilizator); demo seed cu o dronă și un vagon; marker de hartă diferit pentru dronă (acum folosește același desen lateral).
+**Atenționări:** Docker Hub a dat 429 la `supabase/postgres`; testele SQL au rulat pe PG16 local cu un shim minimal (auth.uid, storage, roluri) — același tip de shim e planificat în v3 (`00_local_platform.sql`).

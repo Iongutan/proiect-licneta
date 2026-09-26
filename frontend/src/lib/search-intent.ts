@@ -32,6 +32,8 @@ const BODY_WORDS: Array<[RegExp, BodyType]> = [
   [/\b(tren rutier|autotren|remorca)\b/, "ROAD_TRAIN"],
   [/\b(trail\w*|platforma joasa|utilaj\w*|agabaritic\w*)\b/, "LOWBED"],
   [/\b(rigid|camion solo)\b/, "RIGID"],
+  [/\b(vagon\w*|cale ferata|feroviar\w*)\b/, "RAIL_WAGON"],
+  [/\b(drona|drone|dron)\b/, "DRONE"],
 ];
 
 function findPlaces(text: string): PlaceHit[] {

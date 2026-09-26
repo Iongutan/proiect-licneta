@@ -6,14 +6,15 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import TruckCargo2D from "@/components/logistics/TruckCargo2D";
 import VehicleSide from "@/components/logistics/VehicleBlueprintSVG";
-import type { Booking, MapVehicle, PalletFormat, VehicleLoad } from "@/lib/db-types";
+import type { Booking, MapVehicle, Ownership, PalletFormat, VehicleLoad } from "@/lib/db-types";
 import { DISTRICTS, districtById, districtName } from "@/lib/districts";
-import { fmtDateTime, fmtKg, toLocalInput } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtKg, toLocalInput } from "@/lib/format";
 import {
   PALLET_SPECS, findFreeSpot, layoutTotals, validateLayout, type Floor, type Pallet,
 } from "@/lib/pallet-positioning";
 import { errorMessage, supabaseBrowser } from "@/lib/supabase";
-import { BODY_SPECS } from "@/lib/vehicle-catalog";
+import { BODY_SPECS, MODE_LABEL, OWNERSHIP_LABEL } from "@/lib/vehicle-catalog";
+import DistrictAreaPicker from "./DistrictAreaPicker";
 import { STATUS_LABEL } from "./FleetList";
 
 const toPallet = (l: VehicleLoad): Pallet => ({
@@ -79,6 +80,7 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
   if (!floor) return null;
 
   const owner = vehicle.company_id === companyId;
+  const spec = BODY_SPECS[vehicle.body_type];
   const dirty = JSON.stringify(pallets) !== JSON.stringify(saved);
   const totals = layoutTotals(pallets, floor, vehicle.booked_pallets, vehicle.booked_weight_kg);
   const layoutError = validateLayout(pallets, floor, vehicle.booked_pallets, vehicle.booked_weight_kg);
@@ -142,7 +144,8 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
             <span className={`badge ${STATUS_LABEL[vehicle.status].cls}`}>{STATUS_LABEL[vehicle.status].text}</span>
           </div>
           <p className="t-small mt-1">
-            {BODY_SPECS[vehicle.body_type].label} · {vehicle.cargo_length_cm}×{vehicle.cargo_width_cm}×{vehicle.cargo_height_cm} cm · {fmtKg(vehicle.max_payload_kg)} · {vehicle.company_name}
+            {spec.label} ({MODE_LABEL[spec.mode].toLowerCase()}) · {vehicle.cargo_length_cm}×{vehicle.cargo_width_cm}×{vehicle.cargo_height_cm} cm · {fmtKg(vehicle.max_payload_kg)} · {vehicle.company_name}
+            {vehicle.ownership !== "OWNED" && ` · ${OWNERSHIP_LABEL[vehicle.ownership].toLowerCase()}${vehicle.ownership_until ? ` până la ${fmtDate(vehicle.ownership_until)}` : ""}`}
           </p>
         </div>
         {owner && <VehicleSettings vehicle={vehicle} onChanged={load} onDeleted={() => router.replace("/fleet")} />}
@@ -153,14 +156,17 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
       <section className="card p-4">
         <VehicleSide
           type={vehicle.body_type} cargoLengthCm={vehicle.cargo_length_cm} cargoWidthCm={vehicle.cargo_width_cm}
-          pallets={pallets.map((p) => ({ xCm: p.x, lengthCm: p.length, yCm: p.y, reserved: Boolean(p.bookingId) }))}
+          pallets={spec.loadMode === "FLOOR" ? pallets.map((p) => ({ xCm: p.x, lengthCm: p.length, yCm: p.y, reserved: Boolean(p.bookingId) })) : undefined}
+          occupied={vehicle.occupied_pallets + vehicle.booked_pallets}
           className="mx-auto h-28 w-full max-w-3xl"
           title={`Vedere laterală ${vehicle.plate}`}
         />
       </section>
 
-      {vehicle.body_type === "LOWBED" ? (
+      {spec.loadMode === "NONE" ? (
         <section className="card p-4 t-small">Trailele transportă utilaje, fără plan de paleți. Capacitatea se negociază per cursă.</section>
+      ) : spec.loadMode === "COUNT" ? (
+        <OccupancyPanel vehicle={vehicle} readOnly={!owner} onChanged={load} />
       ) : (
         <section className="card">
           <div className="flex flex-wrap items-end gap-3 border-b border-line p-4">
@@ -263,7 +269,8 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
         </section>
       )}
 
-      {owner && <TripPlanner vehicle={vehicle} onChanged={load} />}
+      {owner && spec.needsArea && <AreaPanel vehicle={vehicle} onChanged={load} />}
+      {owner && !spec.needsArea && <TripPlanner vehicle={vehicle} onChanged={load} />}
       {owner && <GpsPanel vehicle={vehicle} canIssue={isCompanyAdmin} onChanged={load} />}
     </main>
   );
@@ -299,17 +306,25 @@ function VehicleSettings({ vehicle, onChanged, onDeleted }: { vehicle: MapVehicl
     else onChanged();
   };
   const remove = async () => {
-    if (!confirm(`Ștergi definitiv vehiculul ${vehicle.plate}?`)) return;
+    if (!confirm(`Ștergi definitiv ${BODY_SPECS[vehicle.body_type].short.toLowerCase()} ${vehicle.plate} din flotă?`)) return;
     const { error: e, count } = await supabaseBrowser().from("vehicles").delete({ count: "exact" }).eq("id", vehicle.id);
-    if (e || !count) setError(e ? errorMessage(e) : "Vehiculul are rezervări active și nu poate fi șters.");
+    if (e || !count) setError(e ? errorMessage(e) : "Unitatea are rezervări active și nu poate fi ștearsă.");
     else onDeleted();
   };
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <select className="select w-36" value={vehicle.status} onChange={(e) => update({ status: e.target.value })} aria-label="Starea vehiculului">
+        <select className="select w-36" value={vehicle.status} onChange={(e) => update({ status: e.target.value })} aria-label="Starea unității">
           {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v.text}</option>)}
         </select>
+        <select className="select w-32" value={vehicle.ownership} aria-label="Deținere"
+          onChange={(e) => update(e.target.value === "OWNED" ? { ownership: "OWNED", ownership_until: null } : { ownership: e.target.value as Ownership })}>
+          {Object.entries(OWNERSHIP_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        {vehicle.ownership !== "OWNED" && (
+          <input type="date" className="input w-40" aria-label="Deținut până la" value={vehicle.ownership_until ?? ""}
+            onChange={(e) => update({ ownership_until: e.target.value || null })} />
+        )}
         <label className="flex items-center gap-2 text-[13px]">
           <input type="checkbox" className="accent-[var(--color-accent)]" checked={vehicle.is_listed} onChange={(e) => update({ is_listed: e.target.checked })} />
           În bursă
@@ -454,6 +469,108 @@ Content-Type: application/json
 {"lat": 47.0105, "lon": 28.8638, "speed_kmh": 62, "heading": 90}`}</pre>
         </div>
       )}
+    </section>
+  );
+}
+
+// ─── Vagon / dronă: locuri ocupate declarate în bloc (fără plan de podea) ──
+function OccupancyPanel({ vehicle, readOnly, onChanged }: { vehicle: MapVehicle; readOnly: boolean; onChanged: () => void }) {
+  const spec = BODY_SPECS[vehicle.body_type];
+  const room = vehicle.pallet_capacity - vehicle.booked_pallets;
+  const [places, setPlaces] = useState(vehicle.occupied_pallets);
+  const [weight, setWeight] = useState(vehicle.occupied_weight_kg);
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const dirty = places !== vehicle.occupied_pallets || weight !== vehicle.occupied_weight_kg;
+  const clamp = (v: number) => Math.max(0, Math.min(room, Math.round(v) || 0));
+  const overweight = weight + vehicle.booked_weight_kg > vehicle.max_payload_kg;
+  const free = Math.max(0, room - places);
+
+  const save = async () => {
+    setPending(true);
+    setStatus(null);
+    const { error } = await supabaseBrowser().rpc("set_vehicle_occupancy", { p_vehicle: vehicle.id, p_places: places, p_weight_kg: places ? weight : 0 });
+    setPending(false);
+    if (error) return setStatus({ kind: "error", text: errorMessage(error) });
+    setStatus({ kind: "info", text: `Salvat: ${free} ${spec.placeUnit} libere apar acum în bursă.` });
+    onChanged();
+  };
+
+  return (
+    <section className="card p-4">
+      <h2 className="t-subtitle">Locuri ocupate</h2>
+      <p className="t-small mb-3">
+        Declari câte {spec.placeUnit} sunt deja ocupate cu marfă proprie; restul apar libere în bursă. Locurile rezervate prin contract se adaugă automat.
+      </p>
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="field">
+          <label className="t-label" htmlFor="occ-places">Ocupate ({spec.placeUnit})</label>
+          <div className="flex items-center gap-1">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlaces(clamp(places - 1))} disabled={readOnly || places <= 0} aria-label="Unul mai puțin">−</button>
+            <input id="occ-places" type="number" className="input t-num w-20 text-center" min={0} max={room} value={places} disabled={readOnly}
+              onChange={(e) => setPlaces(clamp(Number(e.target.value)))} />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlaces(clamp(places + 1))} disabled={readOnly || places >= room} aria-label="Unul în plus">+</button>
+          </div>
+        </div>
+        <div className="field">
+          <label className="t-label" htmlFor="occ-weight">Greutatea lor (kg)</label>
+          <input id="occ-weight" type="number" className="input t-num w-32" min={0} max={vehicle.max_payload_kg} value={places ? weight : 0} disabled={readOnly || places === 0}
+            onChange={(e) => setWeight(Math.max(0, Math.round(Number(e.target.value)) || 0))} aria-invalid={overweight} />
+        </div>
+        {!readOnly && (
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-ghost" onClick={() => { setPlaces(0); setWeight(0); }}>Golește</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setPlaces(room)}>Plin</button>
+            <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || pending || overweight}>{pending ? "Se salvează…" : "Salvează"}</button>
+          </div>
+        )}
+      </div>
+      <div className="mt-4 max-w-xl">
+        <div className="flex justify-between text-xs">
+          <span className="t-label">Libere</span>
+          <span className="t-num">{free} / {vehicle.pallet_capacity} {spec.placeUnit}{vehicle.booked_pallets > 0 ? ` · ${vehicle.booked_pallets} rezervate` : ""}</span>
+        </div>
+        <div className="mt-1 flex h-2 overflow-hidden rounded bg-line" role="meter" aria-label="Ocupare" aria-valuemin={0}
+          aria-valuemax={vehicle.pallet_capacity} aria-valuenow={places + vehicle.booked_pallets}>
+          <div className="h-full bg-accent" style={{ width: `${(places / Math.max(1, vehicle.pallet_capacity)) * 100}%` }} />
+          <div className="h-full bg-[#93c5fd]" style={{ width: `${(vehicle.booked_pallets / Math.max(1, vehicle.pallet_capacity)) * 100}%` }} />
+        </div>
+        {overweight && <p className="field-error mt-1">Sarcina maximă ({fmtKg(vehicle.max_payload_kg)}) e depășită.</p>}
+      </div>
+      {status && <div className={`alert mt-3 ${status.kind === "error" ? "alert-error" : "alert-info"}`} role="status">{status.text}</div>}
+    </section>
+  );
+}
+
+// ─── Dronă: zona deservită (în loc de cursă A→B) ──────────────────────────
+function AreaPanel({ vehicle, onChanged }: { vehicle: MapVehicle; onChanged: () => void }) {
+  const [area, setArea] = useState<string[]>(vehicle.service_district_ids);
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const dirty = area.join() !== vehicle.service_district_ids.join();
+
+  const save = async () => {
+    if (!area.length) return setStatus({ kind: "error", text: "Alege cel puțin un raion." });
+    setPending(true);
+    setStatus(null);
+    const { error } = await supabaseBrowser().from("vehicles").update({ service_district_ids: area }).eq("id", vehicle.id);
+    setPending(false);
+    if (error) return setStatus({ kind: "error", text: errorMessage(error) });
+    setStatus({ kind: "info", text: "Zona a fost salvată. Expeditorii din aceste raioane găsesc drona la căutare." });
+    onChanged();
+  };
+
+  return (
+    <section className="card p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="t-subtitle">Zona deservită</h2>
+          <p className="t-small">O căutare A → B găsește drona dacă ambele raioane sunt în zona ei.</p>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || pending}>{pending ? "Se salvează…" : "Salvează zona"}</button>
+      </div>
+      <DistrictAreaPicker value={area} onChange={setArea} />
+      {status && <div className={`alert mt-3 ${status.kind === "error" ? "alert-error" : "alert-info"}`} role="status">{status.text}</div>}
     </section>
   );
 }

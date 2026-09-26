@@ -20,6 +20,7 @@ const MATCH_LABEL: Record<TripMatch["match_type"], string> = {
   DIRECT: "Cursă directă",
   TRANSIT: "În tranzit pe traseu",
   AT_ORIGIN: "Liber acum în raion",
+  IN_AREA: "Deservește zona (dronă)",
   NEARBY: "Adiacent (mic ocol)",
 };
 
@@ -265,7 +266,7 @@ function SearchResults({ intent, results, searching, notice, vehicles, onPick, o
   intent: SearchIntent | null; results: TripMatch[] | null; searching: boolean; notice: string | null;
   vehicles: MapVehicle[]; onPick: (id: string) => void; onClose: () => void;
 }) {
-  const groups = (["DIRECT", "TRANSIT", "AT_ORIGIN", "NEARBY"] as const)
+  const groups = (["DIRECT", "TRANSIT", "AT_ORIGIN", "IN_AREA", "NEARBY"] as const)
     .map((t) => ({ type: t, rows: (results ?? []).filter((r) => r.match_type === t) }))
     .filter((g) => g.rows.length);
   // K10: capacitatea afișată vine din lista live, nu din instantaneul căutării.

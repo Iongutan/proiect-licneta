@@ -51,3 +51,9 @@ Format pentru fiecare decizie nouă:
   API de date (peste RLS existent), fișiere și timp real (SSE + LISTEN/NOTIFY). Schema SQL v2 se păstrează printr-un shim.
 - Alternative respinse: Supabase în Docker (dependență, grea); PostgreSQL ca serviciu Windows (nu se oprește cu IDE-ul,
   cere admin); PGlite/embedded-postgres (fără PostGIS garantat); rescrierea securității fără RLS (risc).
+
+## 2026-09-26 — Flotă multimodală într-un singur tabel și o singură interfață
+- Context: un SRL poate avea, pe lângă camioane, o dronă care deservește un raion sau un vagon de tren închiriat cu locuri libere; utilizatorul vrea ca totul să intre în „Flota mea”, fără interfețe diferite.
+- Decizie: `vehicles` devine „unitate de transport”: `body_type` primește `RAIL_WAGON` și `DRONE`; `transport_mode` e coloană generată din tip; limitele fizice sunt pe tip (`vehicles_limits_by_type`); drona are zonă obligatorie (`service_district_ids`, validată de trigger). Vagonul și drona declară locurile ocupate în bloc (`set_vehicle_occupancy`), fără plan de podea. Frontend-ul citește tot ce diferă dintr-un singur catalog (`vehicle-catalog.ts`).
+- Alternative respinse: tabel separat per mod (ar dubla rezervările, contractele, bursa și RLS-ul); plan de podea palet cu palet pentru vagon (utilizatorul vrea locuri setate în bloc).
+- Schema v2 e editată pe loc (fișierele 02–05, 09), nu printr-o migrație nouă: baza v3 se inițializează din aceste fișiere.
