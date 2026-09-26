@@ -65,3 +65,7 @@ acest fișier niciodată.
 **Atenționări:**
 - Tokenul intern ML a fost generat și scris în `ml_service/.env` și `frontend/.env.local` (neversionate).
 - `ml_service/.env` mai conține cheile Supabase vechi, acum nefolosite; pot fi șterse de acolo.
+
+## 2026-09-26 (seara) — Plan „totul local”, încredere și plată
+**Făcut:** termen de plată în contract + `confirm_payment`; `10_trust_and_market.sql`; teste noi (47 de aserțiuni pe PG15); `run.sh` acceptă `PG_IMAGE`; imaginile Supabase self-hosted v0.8.2 descărcate; cheile de test generate în scratchpad (nu în repo).
+**Rămas:** `infra/` pentru stack-ul local complet + test pe PG17; worker AI; UI pentru funcțiile din 10; scalarea live (Broadcast + MapLibre + simulator + k6); asistentul hibrid; analiza pieței.

@@ -48,13 +48,21 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main, nepush-ui
 - Teste verzi: vitest 20, SQL 38 de aserțiuni + atacuri, contract PostgREST 45 de verificări, pytest ml 15; build de producție OK.
 
 **În lucru acum:**
-- Nimic pornit. Așteaptă ca utilizatorul să ruleze SQL-ul în Supabase și să șteargă fișierele v1.
+- Direcție nouă (2026-09-26): TOTUL LOCAL pe laptopul utilizatorului (teză + cerere grant ODA), fără servicii plătite.
+  Supabase self-hosted (v0.8.2, Postgres 17) în Docker; imaginile sunt deja descărcate.
+- `supabase/sql/10_trust_and_market.sql` (recenzii, scor de încredere, preț pe coridor, drum de întoarcere, documente KYC) + termen de plată: testate pe PG15 (47 de aserțiuni); pe PG17 se testează în stack-ul complet (PG17 simplu nu are schema storage).
 
 **Următorii pași:**
 1. Utilizatorul: rulează `supabase/sql/00…09` în SQL Editor, setările Auth, creează adminul (MANUAL_DE_PORNIRE.md, pașii 1–3).
 2. Utilizatorul: șterge fișierele din README → „Curățenie” (ștergerea a fost blocată pentru Claude).
 3. Verificare vizuală a paginilor cu login pe datele reale (hartă, flotă, contracte), după migrații.
 4. Posibile extensii: încărcarea licenței ANTA/CMR la KYC, export/ștergere cont (Legea 133), istoric GPS cu retenție, MSign.
+
+**Decizii de produs confirmate de utilizator (2026-09-26):**
+- AI hibrid: Claude API (înțelegere + răspuns) → funcții SQL fixe (fără SQL generat de AI) → Qwen3 local (analiză, raport brut JSON) → Claude (răspuns). Anonimizare înainte de API, plafon de cost, fallback local.
+- Șoferii NU au cont; doar firma. Verificarea telefonului se face la nivel de firmă (idee gratuită: bot Telegram / apel admin).
+- Scalare pentru multe vehicule live: Realtime Broadcast pe celule geografice (nu postgres_changes), MapLibre GL (WebGL), poziții „calde” separate de istoric (tabel partiționat), agregate calculate pe server, test de încărcare k6.
+- Disponibilitatea / datacenter / cluster GPU: amânate după etapa de produs.
 
 **Note importante / capcane cunoscute:**
 - Supabase folosește claim-ul JWT `role` ca rol Postgres; rolul aplicației stă în `profiles`/`platform_admins`, nu în JWT.

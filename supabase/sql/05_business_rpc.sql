@@ -489,7 +489,8 @@ end $$;
 
 -- K9: alegerea căii. PLATFORM → contract generat din datele KYC (K12) + hash
 -- SHA-256; DIRECT → obligatoriu acceptarea explicită a exonerării.
-create function public.choose_contract_path(p_booking uuid, p_path text, p_disclaimer_accepted boolean default false)
+create function public.choose_contract_path(p_booking uuid, p_path text, p_disclaimer_accepted boolean default false,
+                                            p_payment_terms_days int default 14)
 returns text
 language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
@@ -505,6 +506,11 @@ begin
   if p_path not in ('PLATFORM', 'DIRECT') then
     raise exception 'Cale necunoscută.' using errcode = '22023';
   end if;
+  if p_payment_terms_days is null or p_payment_terms_days not between 0 and 90 then
+    raise exception 'Termenul de plată trebuie să fie între 0 și 90 de zile.' using errcode = '22023';
+  end if;
+  update public.bookings set payment_terms_days = p_payment_terms_days where id = b.id;
+  b.payment_terms_days := p_payment_terms_days;
 
   if p_path = 'DIRECT' then
     if not coalesce(p_disclaimer_accepted, false) then
@@ -533,7 +539,9 @@ begin
     'cargo', jsonb_build_object('pallets', b.pallets, 'weight_kg', b.weight_kg),
     'route', jsonb_build_object('pickup', b.pickup_district_id, 'dropoff', b.dropoff_district_id, 'pickup_at', b.pickup_at),
     'price_mdl', b.price_mdl,
+    'payment_terms_days', b.payment_terms_days,
     'clauses', jsonb_build_array(
+      format('Plata se efectuează în cel mult %s zile de la confirmarea livrării.', b.payment_terms_days),
       'Contractul se încheie conform Codului transporturilor rutiere nr. 150/2014 al Republicii Moldova.',
       'Transportatorul răspunde de integritatea mărfii de la preluare până la livrare.',
       'Expeditorul are acces la poziția GPS a vehiculului pe toată durata cursei.',
@@ -676,7 +684,7 @@ begin
   select * into b from public.bookings where id = b.id;
   if b.path = 'DIRECT' or (b.shipper_delivery_confirmed_at is not null and b.carrier_delivery_confirmed_at is not null) then
     perform public._release_capacity(b.id);
-    update public.bookings set status = 'DELIVERED' where id = b.id;
+    update public.bookings set status = 'DELIVERED', delivered_at = now() where id = b.id;
     if b.request_id is not null then
       update public.freight_requests set status = 'DELIVERED' where id = b.request_id;
     end if;
@@ -688,6 +696,22 @@ begin
   perform public.notify_company(case when v_side = 'SHIPPER' then b.carrier_company_id else b.shipper_company_id end,
     'DELIVERY_CONFIRMATION_REQUIRED', 'Confirmă livrarea', 'Cealaltă parte a confirmat livrarea.', '/bookings/' || b.id);
   return b.status;
+end $$;
+
+-- Transportatorul confirmă încasarea (termenul de plată din contract, K12).
+create function public.confirm_payment(p_booking uuid) returns void
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
+declare b public.bookings; v_side text;
+begin
+  v_side := public._booking_side(p_booking);
+  select * into b from public.bookings where id = p_booking;
+  if v_side <> 'CARRIER' or b.status <> 'DELIVERED' then
+    raise exception 'Doar transportatorul confirmă plata, după livrare.' using errcode = '22023';
+  end if;
+  if b.paid_confirmed_at is not null then return; end if;
+  update public.bookings set paid_confirmed_at = now(), paid_confirmed_by = auth.uid() where id = b.id;
+  perform public.notify_company(b.shipper_company_id, 'PAYMENT_CONFIRMED', 'Plata a fost confirmată de transportator', null, '/bookings/' || b.id);
+  perform public.log_audit(public.current_company_id(), 'PAYMENT_CONFIRMED', 'booking', b.id);
 end $$;
 
 create function public.cancel_booking(p_booking uuid, p_reason text default null) returns void
@@ -800,7 +824,7 @@ begin
                         'save_vehicle_layout', 'set_vehicle_trip', 'clear_vehicle_trip', 'issue_device_token',
                         'ingest_position', 'search_trips', 'vehicles_passing_near_me', '_booking_side',
                         '_reserve_capacity', '_release_capacity', 'propose_booking', 'accept_price',
-                        'choose_contract_path', 'sign_booking', 'start_transit', 'record_delivery_proof',
+                        'choose_contract_path', 'sign_booking', 'start_transit', 'record_delivery_proof', 'confirm_payment',
                         'confirm_delivery', 'cancel_booking', 'cancel_request', 'mark_notifications_read',
                         'review_company', 'refresh_demo_trips')
   loop
@@ -821,7 +845,8 @@ grant execute on function public.search_trips(text, text, int, boolean, text, nu
 grant execute on function public.vehicles_passing_near_me(numeric, int)                               to authenticated;
 grant execute on function public.propose_booking(uuid, int, int, text, text, timestamptz, numeric, uuid, text) to authenticated;
 grant execute on function public.accept_price(uuid)                                                   to authenticated;
-grant execute on function public.choose_contract_path(uuid, text, boolean)                            to authenticated;
+grant execute on function public.choose_contract_path(uuid, text, boolean, int)                       to authenticated;
+grant execute on function public.confirm_payment(uuid)                                                to authenticated;
 grant execute on function public.sign_booking(uuid, boolean)                                          to authenticated;
 grant execute on function public.start_transit(uuid)                                                  to authenticated;
 grant execute on function public.record_delivery_proof(uuid, text, double precision, double precision, timestamptz) to authenticated;

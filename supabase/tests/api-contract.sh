@@ -21,7 +21,7 @@ sleep 4
 run()   { docker exec -i -e PGPASSWORD=$PW "$DB" psql -U postgres -v ON_ERROR_STOP=1 -q -f - < "$1"; }
 runsu() { docker exec -i -e PGPASSWORD=$PW "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q -f - < "$1"; }
 runsu tests/00_test_prelude.sql
-for f in sql/0[1-9]_*.sql; do run "$f" >/dev/null; done
+for f in sql/0[1-9]_*.sql sql/1[0-9]_*.sql; do run "$f" >/dev/null; done
 
 # auth.uid() ca în Supabase Cloud (citește și request.jwt.claims, setat de PostgREST 12)
 docker exec -i -e PGPASSWORD=$PW "$DB" psql -U supabase_admin -d postgres -q -v ON_ERROR_STOP=1 <<SQL

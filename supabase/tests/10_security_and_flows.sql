@@ -183,6 +183,31 @@ do $$ begin
   perform test.eq((select count(*) from public.audit_log where entity = 'booking')::int >= 5, true, 'jurnal: evenimentele rezervării sunt înregistrate');
 end $$;
 select test.expect_error($$update public.audit_log set action = 'X'$$, 'permission denied');
+-- ─── Încredere și plată (10_trust_and_market.sql) ─────────────────────────
+select public.submit_review(id, 5, true, true, 'Punctual, marfa intactă') from public.bookings where status = 'DELIVERED';
+select test.expect_error($$select public.submit_review(id, 4) from public.bookings where status = 'DELIVERED'$$, 'deja');
+select test.act_as(:C);
+select test.expect_error($$select public.submit_review(id, 9) from public.bookings where status = 'AGREED'$$, 'după livrare');
+select test.expect_error($$select public.confirm_payment(id) from public.bookings where status = 'AGREED'$$, 'după livrare');
+select public.confirm_payment(id) from public.bookings where status = 'DELIVERED';
+do $$ begin
+  perform test.eq((select paid_confirmed_at is not null from public.bookings where status = 'DELIVERED'), true, 'plată confirmată de transportator');
+  perform test.eq((select contract_snapshot ->> 'payment_terms_days' from public.bookings where status = 'DELIVERED'), '14', 'termenul de plată e în contract');
+  perform test.eq((select avg_score from public.company_trust(public.current_company_id())), 5.0, 'scor de încredere din recenzii');
+  perform test.eq((select deliveries from public.company_trust(public.current_company_id())), 1, 'livrări numărate');
+end $$;
+select test.act_as(:O);
+do $$ begin
+  perform test.eq((select count(*) from public.company_trust((select id from public.companies where name = 'Carausul Neverificat')))::int, 1, 'firma își vede propriul scor');
+end $$;
+select test.act_as(:S);
+do $$ begin
+  perform test.eq((select count(*) from public.company_trust((select company_id from public.profiles where id = '44444444-4444-4444-8444-444444444444')))::int, 0, 'scorul firmelor neverificate nu e public');
+end $$;
+select test.expect_error($$select * from public.backhaul_matches('d1000000-0000-4000-8000-000000000001')$$, 'fără drepturi');
+select test.expect_error($$select * from public._backhaul_for_vehicle('d1000000-0000-4000-8000-000000000001')$$, 'permission denied');
+select test.act_as(:C);
+
 select test.expect_error($$delete from public.audit_log$$, 'permission denied');
 
 -- ─── GPS (token de dispozitiv) ────────────────────────────────────────────

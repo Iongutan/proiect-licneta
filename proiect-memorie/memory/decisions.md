@@ -39,3 +39,8 @@ Format pentru fiecare decizie nouă:
 
 ## 2026-09-26 — Paleți în vehicul: ocupați vs rezervați
 - Decizie: `vehicle_loads` = plasare fizică (OCCUPIED = marfa proprie a transportatorului, RESERVED = legat de un contract); `vehicles.booked_pallets` = capacitate rezervată prin contract (plasată sau nu). Liber = capacitate − ocupați − rezervați (coloană generată).
+
+## 2026-09-26 — Totul local + AI hibrid
+- Context: utilizatorul vrea zero costuri de servicii pentru teză și cererea de grant ODA; datele să stea pe calculatorul/serverul lui.
+- Decizie: Supabase self-hosted (open-source, Postgres 17) în Docker local; Ollama/Qwen3 local; Claude API doar pentru conversația cu clientul, cu anonimizare și plafon de cost.
+- Alternative respinse: Supabase Cloud (dependență externă); Postgres simplu cu auth scris de mână (mai mult cod, mai mult risc); AI care generează SQL (risc de scurgere prin prompt injection).
