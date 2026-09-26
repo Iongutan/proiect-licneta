@@ -123,6 +123,28 @@ try {
   await shot(carrier, "flota-multimodala");
   ok("dronă adăugată; flota are vagon + dronă");
 
+  // ─── Asistentul flotei: descriere liberă → unitate, pe aceeași pagină ─
+  await carrier.getByLabel("Descrie ce adaugi în flotă").fill(`am un frigider Volvo FH 500, ORH ${run.slice(-3)}, 30 de paleți, 22 t, e la Orhei`);
+  await carrier.getByRole("button", { name: "Construiește" }).click();
+  await carrier.getByRole("heading", { name: /semiremorcă frigorifică/ }).waitFor();
+  await shot(carrier, "asistent-ciorna");
+  await carrier.getByRole("button", { name: "Adaugă în flotă" }).first().click();
+  await carrier.locator(".kbd-plate", { hasText: `ORH ${run.slice(-3)}` }).waitFor();
+  ok("asistentul a construit frigorificul din „am un frigider …”");
+
+  // ─── Plan de încărcare: clic pe locuri libere + palet tras pe podea ──
+  await carrier.locator(".kbd-plate", { hasText: `ORH ${run.slice(-3)}` }).click();
+  await carrier.waitForURL(/\/fleet\/[0-9a-f-]{36}/);
+  const floor = carrier.locator('svg[role="application"]');
+  for (let i = 0; i < 3; i += 1) await floor.locator("g.cursor-pointer").first().click();
+  const box = await floor.boundingBox();
+  await carrier.getByRole("radio", { name: /Industrial/ }).dragTo(floor, { targetPosition: { x: box.width * 0.6, y: box.height * 0.45 } });
+  await carrier.getByText("Libere: 26").waitFor();
+  await carrier.getByRole("button", { name: "Salvează planul" }).click();
+  await carrier.getByText("Planul de încărcare a fost salvat").waitFor();
+  await shot(carrier, "plan-paleti");
+  ok("plan de încărcare: 3 paleți EUR pe locuri libere + 1 industrial tras pe podea, salvat");
+
   // ─── Expeditor: găsește vagonul și cere locuri ───────────────────────
   await shipper.goto(`${BASE}/map`);
   await shipper.getByLabel("Caută o cursă").fill("Ungheni Chișinău 3 paleți");

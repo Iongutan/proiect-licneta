@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkPlacement, findFreeSpot, geometricCapacity, layoutTotals, validateLayout,
+  checkPlacement, findFreeSpot, freeSlots, geometricCapacity, layoutTotals, validateLayout,
   type Floor, type Pallet,
 } from "../pallet-positioning";
 import { BODY_SPECS, BODY_TYPES } from "../vehicle-catalog";
@@ -61,5 +61,23 @@ describe("K7 — plasare paleți", () => {
       const s = BODY_SPECS[type];
       expect(s.pallets).toBeLessThanOrEqual(geometricCapacity({ bodyType: type, lengthCm: s.lengthCm, widthCm: s.widthCm }));
     }
+  });
+});
+
+describe("locuri libere pe podea", () => {
+  it("TIR gol: 33 de locuri EUR, fără suprapuneri", () => {
+    const slots = freeSlots([], TIR, 120, 80, 33);
+    expect(slots).toHaveLength(33);
+    const asPallets = slots.map((s, i) => ({ id: String(i), ...s, format: "EUR" as const, weightKg: 1 }));
+    expect(validateLayout(asPallets, TIR)).toBeNull();
+  });
+
+  it("se oprește la capacitatea rămasă, nu la ce încape geometric", () => {
+    expect(freeSlots([eur("a", 0, 0), eur("b", 0, 80)], TIR, 120, 80, 5)).toHaveLength(5);
+  });
+
+  it("tren rutier: niciun loc liber peste cuplaj", () => {
+    const cx = TRAIN.lengthCm / 2;
+    for (const s of freeSlots([], TRAIN, 120, 80, 36)) expect(s.x < cx && s.x + s.length > cx).toBe(false);
   });
 });

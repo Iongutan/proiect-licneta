@@ -122,6 +122,23 @@ export function findFreeSpot(existing: Pallet[], floor: Floor, lengthCm: number,
   return null;
 }
 
+/**
+ * Locurile libere în care mai încape câte un palet de dimensiunile date — cel
+ * mult `max` (capacitatea rămasă), în ordinea de încărcare de la cabină spre uși.
+ * Editorul le desenează pe podea ca poziții goale.
+ */
+export function freeSlots(existing: Pallet[], floor: Floor, lengthCm: number, widthCm: number, max: number): Array<{ x: number; y: number; length: number; width: number }> {
+  const out: Array<{ x: number; y: number; length: number; width: number }> = [];
+  const probe = [...existing];
+  while (out.length < max) {
+    const spot = findFreeSpot(probe, floor, lengthCm, widthCm);
+    if (!spot) break;
+    out.push(spot);
+    probe.push({ id: `__slot${out.length}__`, ...spot, format: "CUSTOM", weightKg: 0 });
+  }
+  return out;
+}
+
 /** Câți paleți de un format încap geometric pe podea (pentru a sugera capacitatea). */
 export function geometricCapacity(floor: Pick<Floor, "bodyType" | "lengthCm" | "widthCm">, spec: Pick<PalletSpec, "lengthCm" | "widthCm"> = PALLET_SPECS.EUR): number {
   const fit = (L: number, W: number) =>

@@ -11,8 +11,8 @@ import { useMemo, useState } from "react";
 import VehicleSide from "@/components/logistics/VehicleBlueprintSVG";
 import type { BodyType, Ownership } from "@/lib/db-types";
 import { DISTRICTS } from "@/lib/districts";
+import { createUnit } from "@/lib/fleet-create";
 import { geometricCapacity } from "@/lib/pallet-positioning";
-import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import {
   BODY_SPECS, GPS_PROTOCOLS, MODE_LABEL, OWNERSHIP_LABEL, capacityErrors, findBodyTypes, idPatternFor, normalizeUnitId,
 } from "@/lib/vehicle-catalog";
@@ -113,45 +113,13 @@ export default function VehicleWizard({ companyId, homeDistrict, onClose, onCrea
     if (Object.keys(errors).length) return;
     setPending(true);
     setError(null);
-    const db = dbBrowser();
-    const district = DISTRICTS.find((x) => x.id === d.districtId);
-    const { data, error: insertError } = await db
-      .from("vehicles")
-      .insert({
-        company_id: companyId,
-        plate: d.plate.trim(),
-        make_model: d.makeModel.trim(),
-        body_type: d.bodyType,
-        cargo_length_cm: d.lengthCm,
-        cargo_width_cm: d.widthCm,
-        cargo_height_cm: d.heightCm,
-        max_payload_kg: d.payloadKg,
-        pallet_capacity: d.pallets,
-        has_reefer: d.hasReefer,
-        price_per_km: d.pricePerKm.trim() === "" ? null : Number(d.pricePerKm),
-        ownership: d.ownership,
-        ownership_until: d.ownership !== "OWNED" && d.ownershipUntil ? d.ownershipUntil : null,
-        service_district_ids: spec.needsArea ? d.area : [],
-        gps_protocol: d.gpsProtocol,
-        gps_device_id: d.gpsProtocol === "MANUAL" ? null : d.gpsDeviceId.trim(),
-        district_id: d.districtId,
-        // Poziția inițială = centrul raionului; trackerul o actualizează apoi.
-        position: district ? `SRID=4326;POINT(${district.lon} ${district.lat})` : null,
-        position_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-    if (insertError || !data) {
+    const res = await createUnit(companyId, d);
+    if ("error" in res) {
       setPending(false);
-      setError(insertError?.code === "23505" ? `Există deja o unitate cu acest ${spec.idLabel.toLowerCase()}.` : errorMessage(insertError));
+      setError(res.error);
       return;
     }
-    if (spec.hasCrew && (d.crewName.trim() || d.crewPhone.trim())) {
-      await db.from("vehicle_private").insert({
-        vehicle_id: data.id, driver_name: d.crewName.trim() || null, driver_phone: d.crewPhone.trim() || null,
-      });
-    }
-    onCreated(data.id);
+    onCreated(res.id);
   };
 
   const err = (k: string) => (touched ? errors[k] : undefined);

@@ -3,10 +3,14 @@
 // K7 — editorul planului de încărcare, vedere de sus la scară (1 unitate SVG = 1 cm).
 // Trage paleții cu mouse-ul/degetul (lipire la 5 cm), săgeți = mutare fină,
 // R = rotire, Delete = scoatere. Coliziunile și ieșirea din caroserie sunt
-// semnalate imediat; poziția invalidă nu e acceptată.
+// semnalate imediat; poziția invalidă nu e acceptată. Locurile încă libere
+// apar ca poziții punctate (clic = palet acolo), iar tipurile de paleți din
+// paletar (PalletPalette) se pot trage direct pe podea.
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { checkPlacement, couplingX, snap, type Floor, type Pallet } from "@/lib/pallet-positioning";
+import type { PalletFormat } from "@/lib/db-types";
+import { readDraggedPallet } from "./pallet-drag";
 
 interface Props {
   floor: Floor;
@@ -17,13 +21,17 @@ interface Props {
   /** Clic pe podea liberă (în cm), pentru adăugarea unui palet. */
   onFloorClick?: (xCm: number, yCm: number) => void;
   onReject?: (reason: string) => void;
+  /** Locuri goale unde mai încape un palet (desenate punctat). */
+  freeSlots?: Array<{ x: number; y: number; length: number; width: number }>;
+  /** Un tip de palet tras din paletar a fost lăsat pe podea (coordonatele colțului, în cm). */
+  onDropPallet?: (format: PalletFormat, xCm: number, yCm: number, lengthCm: number, widthCm: number) => void;
   readOnly?: boolean;
   className?: string;
 }
 
 const MARGIN = { left: 70, right: 50, top: 34, bottom: 44 };
 
-export default function TruckCargo2D({ floor, pallets, selectedId, onSelect, onChange, onFloorClick, onReject, readOnly, className }: Props) {
+export default function TruckCargo2D({ floor, pallets, selectedId, onSelect, onChange, onFloorClick, onReject, freeSlots, onDropPallet, readOnly, className }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
   const [ghost, setGhost] = useState<{ pallet: Pallet; ok: boolean } | null>(null);
@@ -102,6 +110,38 @@ export default function TruckCargo2D({ floor, pallets, selectedId, onSelect, onC
     }
   };
 
+  // Paleți trași din paletar: previzualizare în timpul tragerii, validare la lăsare.
+  const dropCandidate = (e: React.DragEvent): Pallet | null => {
+    const dragged = readDraggedPallet(e.dataTransfer);
+    if (!dragged) return null;
+    const at = toCm(e.clientX, e.clientY);
+    return {
+      id: "__drop__", format: dragged.format, weightKg: 0, length: dragged.length, width: dragged.width,
+      x: snap(Math.max(0, Math.min(at.x - dragged.length / 2, floor.lengthCm - dragged.length))),
+      y: snap(Math.max(0, Math.min(at.y - dragged.width / 2, floor.widthCm - dragged.width))),
+    };
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    if (readOnly || !onDropPallet) return;
+    const candidate = dropCandidate(e);
+    if (!candidate) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setGhost({ pallet: candidate, ok: checkPlacement(pallets, candidate, floor).ok });
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    setGhost(null);
+    if (readOnly || !onDropPallet) return;
+    const candidate = dropCandidate(e);
+    if (!candidate) return;
+    e.preventDefault();
+    const check = checkPlacement(pallets, candidate, floor);
+    if (!check.ok) return onReject?.(check.reason);
+    onDropPallet(candidate.format, candidate.x, candidate.y, candidate.length, candidate.width);
+  };
+
   const floorClick = (e: React.MouseEvent) => {
     if (readOnly || !onFloorClick) return;
     const at = toCm(e.clientX, e.clientY);
@@ -130,6 +170,9 @@ export default function TruckCargo2D({ floor, pallets, selectedId, onSelect, onC
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onDragOver={onDragOver}
+      onDragLeave={() => setGhost((g) => (g?.pallet.id === "__drop__" ? null : g))}
+      onDrop={onDrop}
     >
       {/* Cabina și ușile */}
       <rect x={6} y={MARGIN.top + floor.widthCm * 0.12} width={MARGIN.left - 18} height={floor.widthCm * 0.76} rx={10} fill="#fff" stroke="#0f172a" strokeWidth={2} />
@@ -159,6 +202,23 @@ export default function TruckCargo2D({ floor, pallets, selectedId, onSelect, onC
           <g key={`t${m}`} pointerEvents="none">
             <line x1={m} x2={m} y1={floor.widthCm} y2={floor.widthCm + 10} stroke="#64748b" strokeWidth={1.5} />
             <text x={m} y={floor.widthCm + 28} textAnchor="middle" fontSize={14} fill="#64748b">{m / 100} m</text>
+          </g>
+        ))}
+
+        {/* Locuri libere: unde mai încape câte un palet */}
+        {!readOnly && freeSlots?.map((slot, i) => (
+          <g
+            key={`free${i}`}
+            transform={`translate(${slot.x} ${slot.y})`}
+            className="cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(null);
+              onFloorClick?.(slot.x + slot.length / 2, slot.y + slot.width / 2);
+            }}
+          >
+            <rect x={3} y={3} width={slot.length - 6} height={slot.width - 6} rx={3} fill="rgba(37,99,235,0.04)" stroke="#93c5fd" strokeWidth={2} strokeDasharray="7 6" />
+            <text x={slot.length / 2} y={slot.width / 2 + 7} textAnchor="middle" fontSize={22} fill="#93c5fd" pointerEvents="none">+</text>
           </g>
         ))}
 

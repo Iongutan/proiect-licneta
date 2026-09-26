@@ -14,7 +14,7 @@ export interface SearchIntent {
   bodyType?: BodyType;
 }
 
-interface PlaceHit {
+export interface PlaceHit {
   district: District;
   start: number;
   end: number;
@@ -36,7 +36,8 @@ const BODY_WORDS: Array<[RegExp, BodyType]> = [
   [/\b(drona|drone|dron)\b/, "DRONE"],
 ];
 
-function findPlaces(text: string): PlaceHit[] {
+/** Raioanele menționate într-un text normalizat (normalizeText), în ordinea apariției. */
+export function findPlaces(text: string): PlaceHit[] {
   const hits: PlaceHit[] = [];
   const taken = new Array(text.length).fill(false);
   for (const { form, district } of PLACE_FORMS) {

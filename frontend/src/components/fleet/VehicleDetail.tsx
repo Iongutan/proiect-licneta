@@ -10,11 +10,12 @@ import type { Booking, MapVehicle, Ownership, PalletFormat, VehicleLoad } from "
 import { DISTRICTS, districtById, districtName } from "@/lib/districts";
 import { fmtDate, fmtDateTime, fmtKg, toLocalInput } from "@/lib/format";
 import {
-  PALLET_SPECS, findFreeSpot, layoutTotals, validateLayout, type Floor, type Pallet,
+  PALLET_SPECS, findFreeSpot, freeSlots, layoutTotals, validateLayout, type Floor, type Pallet,
 } from "@/lib/pallet-positioning";
 import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS, MODE_LABEL, OWNERSHIP_LABEL } from "@/lib/vehicle-catalog";
 import DistrictAreaPicker from "./DistrictAreaPicker";
+import PalletPalette from "./PalletPalette";
 import { STATUS_LABEL } from "./FleetList";
 
 const toPallet = (l: VehicleLoad): Pallet => ({
@@ -89,18 +90,27 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
 
   const dims = () => (format === "CUSTOM" ? { length: custom.length, width: custom.width } : { length: PALLET_SPECS[format].lengthCm, width: PALLET_SPECS[format].widthCm });
 
+  const place = (candidate: Pallet) => {
+    const err = validateLayout([...pallets, candidate], floor, vehicle.booked_pallets, vehicle.booked_weight_kg);
+    if (err && !err.startsWith("Capacitate") && !err.startsWith("Sarcină")) return flash("error", err.replace(/^Paletul #\d+: /, ""));
+    setPallets([...pallets, candidate]);
+    setSelectedId(candidate.id);
+    setMessage(err ? { kind: "error", text: err } : null);
+  };
+
+  // Tip de palet tras din paletar direct pe podea (coordonatele colțului, deja validate de editor).
+  const dropPallet = (dropped: PalletFormat, x: number, y: number, length: number, width: number) => {
+    setFormat(dropped);
+    place({ id: newId(), x, y, length, width, format: dropped, weightKg: weight, bookingId: forBooking || null });
+  };
+
   const addAt = (x?: number, y?: number) => {
     const { length, width } = dims();
     const spot = x === undefined || y === undefined
       ? findFreeSpot(pallets, floor, length, width)
       : { x: Math.max(0, Math.min(x - length / 2, floor.lengthCm - length)), y: Math.max(0, Math.min(y - width / 2, floor.widthCm - width)), length, width };
     if (!spot) return flash("error", "Nu mai e loc liber pentru acest palet.");
-    const candidate: Pallet = { id: newId(), ...spot, format, weightKg: weight, bookingId: forBooking || null };
-    const err = validateLayout([...pallets, candidate], floor, vehicle.booked_pallets, vehicle.booked_weight_kg);
-    if (err && !err.startsWith("Capacitate") && !err.startsWith("Sarcină")) return flash("error", err.replace(/^Paletul #\d+: /, ""));
-    setPallets([...pallets, candidate]);
-    setSelectedId(candidate.id);
-    setMessage(err ? { kind: "error", text: err } : null);
+    place({ id: newId(), ...spot, format, weightKg: weight, bookingId: forBooking || null });
   };
 
   const fill = () => {
@@ -130,6 +140,10 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
     flash("info", "Planul de încărcare a fost salvat. Locurile libere s-au actualizat în bursă.");
     load();
   };
+
+  // Locurile încă libere (câte mai permite capacitatea), pentru tipul de palet ales.
+  const free = Math.max(0, floor.palletCapacity - totals.ownPallets - vehicle.booked_pallets);
+  const slots = owner ? freeSlots(pallets, floor, dims().length, dims().width, free) : [];
 
   const updateSelected = (patch: Partial<Pallet>) => setPallets((ps) => ps.map((p) => (p.id === selectedId ? { ...p, ...patch } : p)));
 
@@ -170,20 +184,7 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
       ) : (
         <section className="card">
           <div className="flex flex-wrap items-end gap-3 border-b border-line p-4">
-            <div className="field">
-              <label className="t-label" htmlFor="fmt">Palet</label>
-              <select id="fmt" className="select w-44" value={format} onChange={(e) => setFormat(e.target.value as PalletFormat)} disabled={!owner}>
-                <option value="EUR">{PALLET_SPECS.EUR.label}</option>
-                <option value="INDUSTRIAL">{PALLET_SPECS.INDUSTRIAL.label}</option>
-                <option value="CUSTOM">Dimensiuni proprii</option>
-              </select>
-            </div>
-            {format === "CUSTOM" && (
-              <>
-                <NumberField label="Lungime (cm)" value={custom.length} onChange={(v) => setCustom({ ...custom, length: v })} min={40} max={400} />
-                <NumberField label="Lățime (cm)" value={custom.width} onChange={(v) => setCustom({ ...custom, width: v })} min={40} max={260} />
-              </>
-            )}
+            {owner && <PalletPalette value={format} custom={custom} onChange={setFormat} onCustomChange={setCustom} />}
             <NumberField label="Greutate (kg)" value={weight} onChange={setWeight} min={1} max={2500} />
             {contracts.length > 0 && (
               <div className="field">
@@ -196,8 +197,7 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
             )}
             {owner && (
               <div className="ml-auto flex flex-wrap gap-2">
-                <button type="button" className="btn btn-secondary" onClick={() => addAt()}>Adaugă palet</button>
-                <button type="button" className="btn btn-secondary" onClick={fill}>Umple locurile</button>
+                <button type="button" className="btn btn-secondary" onClick={fill}>Umple locurile libere</button>
                 <button type="button" className="btn btn-ghost" onClick={() => { setPallets(pallets.filter((p) => p.bookingId)); setSelectedId(null); }}>Golește</button>
                 <button type="button" className="btn btn-ghost" onClick={() => { setPallets(saved); setSelectedId(null); }} disabled={!dirty}>Renunță</button>
                 <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || saving || Boolean(layoutError)}>{saving ? "Se salvează…" : "Salvează planul"}</button>
@@ -207,6 +207,7 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
 
           <div className="grid gap-4 p-4 lg:grid-cols-[1fr_260px]">
             <div>
+              <FloorLegend own={totals.ownPallets} reserved={pallets.length - totals.ownPallets} booked={vehicle.booked_pallets} free={free} capacity={floor.palletCapacity} unit={spec.placeUnit} />
               <TruckCargo2D
                 floor={floor}
                 pallets={pallets}
@@ -215,10 +216,12 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
                 onChange={owner ? setPallets : undefined}
                 onFloorClick={owner ? (x, y) => addAt(x, y) : undefined}
                 onReject={(reason) => flash("error", reason)}
+                freeSlots={owner ? slots : undefined}
+                onDropPallet={owner ? dropPallet : undefined}
                 readOnly={!owner}
                 className="w-full rounded-md border border-line bg-surface"
               />
-              {owner && <p className="t-small mt-2">Clic pe podea = palet nou acolo · trage pentru mutare (pas 5 cm) · săgeți = mutare fină (Shift: 1 cm) · R = rotire · Delete = scoatere.</p>}
+              {owner && <p className="t-small mt-2">Trage un tip de palet pe podea sau clic pe un loc punctat · trage paleții pentru mutare (pas 5 cm) · săgeți = mutare fină (Shift: 1 cm) · R = rotire · Delete = scoatere.</p>}
             </div>
 
             <aside className="space-y-4">
@@ -572,5 +575,18 @@ function AreaPanel({ vehicle, onChanged }: { vehicle: MapVehicle; onChanged: () 
       <DistrictAreaPicker value={area} onChange={setArea} />
       {status && <div className={`alert mt-3 ${status.kind === "error" ? "alert-error" : "alert-info"}`} role="status">{status.text}</div>}
     </section>
+  );
+}
+
+function FloorLegend({ own, reserved, booked, free, capacity, unit }: {
+  own: number; reserved: number; booked: number; free: number; capacity: number; unit: string;
+}) {
+  const unplacedBooked = Math.max(0, booked - reserved);
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-ink-2" aria-label="Legenda planului">
+      <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-4 rounded-sm bg-accent" aria-hidden="true" /> Ocupate: <strong className="t-num">{own}</strong></span>
+      <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-4 rounded-sm border border-accent bg-[#dbeafe]" aria-hidden="true" /> Rezervate prin contract: <strong className="t-num">{booked}</strong>{unplacedBooked > 0 && <span className="text-muted">({unplacedBooked} neplasate)</span>}</span>
+      <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-4 rounded-sm border border-dashed border-[#93c5fd]" aria-hidden="true" /> Libere: <strong className="t-num">{free}</strong> din {capacity} {unit}</span>
+    </div>
   );
 }

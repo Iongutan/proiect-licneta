@@ -10,6 +10,7 @@ import { districtName } from "@/lib/districts";
 import { fmtDate, fmtDateTime, fmtKg } from "@/lib/format";
 import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS, MODE_LABEL, OWNERSHIP_LABEL } from "@/lib/vehicle-catalog";
+import FleetAssistant from "./FleetAssistant";
 import VehicleWizard from "./VehicleWizard";
 
 export const STATUS_LABEL: Record<MapVehicle["status"], { text: string; cls: string }> = {
@@ -32,13 +33,15 @@ async function fetchFleet(companyId: string): Promise<{ vehicles: MapVehicle[]; 
   return { vehicles, loads };
 }
 
-export default function FleetList({ companyId, homeDistrict }: { companyId: string; homeDistrict: string | null }) {
+export default function FleetList({ companyId, companyName, homeDistrict }: { companyId: string; companyName: string; homeDistrict: string | null }) {
   const router = useRouter();
   const [vehicles, setVehicles] = useState<MapVehicle[] | null>(null);
   const [loads, setLoads] = useState<Record<string, VehicleLoad[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [mode, setMode] = useState<TransportMode | "ALL">("ALL");
+  const [version, setVersion] = useState(0);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -53,7 +56,7 @@ export default function FleetList({ companyId, homeDistrict }: { companyId: stri
     return () => {
       active = false;
     };
-  }, [companyId]);
+  }, [companyId, version]);
 
   const counts = { ROAD: 0, RAIL: 0, AIR: 0 } as Record<TransportMode, number>;
   for (const v of vehicles ?? []) counts[v.transport_mode] += 1;
@@ -79,6 +82,18 @@ export default function FleetList({ companyId, homeDistrict }: { companyId: stri
         )}
       </header>
 
+      <FleetAssistant
+        companyId={companyId}
+        companyName={companyName}
+        homeDistrict={homeDistrict}
+        fleet={vehicles ?? []}
+        onCreated={(id) => {
+          setJustAdded(id);
+          setMode("ALL");
+          setVersion((v) => v + 1);
+        }}
+      />
+
       {error && <div className="alert alert-error mb-4">{error}</div>}
       {vehicles === null && !error && <p className="t-small">Se încarcă…</p>}
 
@@ -96,7 +111,7 @@ export default function FleetList({ companyId, homeDistrict }: { companyId: stri
           const spec = BODY_SPECS[v.body_type];
           const vl = loads[v.id] ?? [];
           return (
-            <Link key={v.id} href={`/fleet/${v.id}`} className="card flex flex-col hover:border-line-strong">
+            <Link key={v.id} href={`/fleet/${v.id}`} className={`card flex flex-col hover:border-line-strong ${v.id === justAdded ? "border-accent ring-2 ring-accent-soft" : ""}`}>
               <div className="relative border-b border-line bg-canvas px-4 pb-2 pt-3">
                 <span className="absolute right-2 top-2 rounded p-1 text-muted" title="Configurează" aria-hidden="true">
                   <Settings2 className="h-4 w-4" />

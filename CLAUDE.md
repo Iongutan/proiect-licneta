@@ -71,12 +71,13 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main)_
 - Netestat încă pe Windows real: descărcarea/dezarhivarea runtime-ului (`tar -xf` pe .zip) și oprirea la Stop din VS Code.
 - De curățat: `infra/local` (Docker), `docker-compose.yml`, `OptiFleet.cmd` vechi, README (încă descrie Supabase).
 
-## Cerințe noi ale utilizatorului (urmează)
-1. Constructor de flotă simplu: locuri ocupate/goale vizibile, tipuri de paleți trase cu drag & drop pe podea.
-2. În „Flota mea”, o fereastră-asistent: scrii „am un frigider” → se construiește în aceeași pagină (nu pagină
-   separată) formularul unității, precompletat cu ce știe platforma despre firmă. Fără API extern (parser local;
-   Ollama opțional).
-3. Producătorii (expeditorii) își pun marfa pe platformă — există deja ca cereri de transport; de verificat UX-ul.
+## Cerințe noi ale utilizatorului
+1. FĂCUT — Constructor de paleți: paletar EUR/Industrial/propriu tras cu drag & drop pe podea (`PalletPalette`,
+   `pallet-drag.ts`), locuri libere punctate pe plan (`freeSlots` în pallet-positioning), legendă ocupate/rezervate/libere.
+2. FĂCUT — Asistentul din „Flota mea” (`FleetAssistant`, `lib/unit-parser.ts`): „am un frigider Volvo, 30 de paleți,
+   e la Bălți” → formular precompletat pe aceeași pagină (tip, nr., model, locuri, sarcină, preț, deținere, raion,
+   zonă dronă); restul din catalog + datele firmei (raion sediu, tariful mediu al firmei pe același tip). Parser local.
+3. De verificat UX — producătorii (expeditorii) își pun marfa ca cereri de transport (`/requests`).
 4. FĂRĂ date demo: utilizatorul își introduce singur vehiculele.
 
 ## Ce s-a făcut până acum (istoric scurt)

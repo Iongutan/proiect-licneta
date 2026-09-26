@@ -103,3 +103,7 @@ acest fișier niciodată.
 **Făcut:** stratul local complet (PostgreSQL proces-copil + auth/date/fișiere/timp real în Next.js), `@supabase/*` scos, manual de pornire rescris, F5 în VS Code = `npm run dev`. Teste: SQL 58 (pe baza locală, fără Docker), vitest 29, E2E în browser trecut cap-coadă.
 **Rămas:** constructor paleți drag & drop + locuri libere/ocupate; asistentul „am un frigider”; test pe Windows real; curățarea fișierelor Docker/Supabase; urcarea pe GitHub (bundle).
 **Atenționări:** PostgreSQL refuză root pe Linux; pe Windows, Stop din VS Code trebuie să trimită Ctrl+C (launch.json = node-terminal) ca baza să se oprească curat; altfel `npm run stop`.
+
+## 2026-09-26 (seara) — Paleți drag & drop + asistentul flotei
+**Făcut:** paletar de paleți tras pe podea, locuri libere afișate și clicabile, legendă; asistent „am un frigider …” cu formular inline precompletat; `lib/fleet-create.ts` comun pentru constructor și asistent. E2E extins (asistent + plan de paleți salvat) — trece; vitest 38.
+**Rămas:** verificarea UX a cererilor de marfă pentru producători; test pe Windows real; curățarea Docker/Supabase din repo și README; urcarea pe GitHub.
