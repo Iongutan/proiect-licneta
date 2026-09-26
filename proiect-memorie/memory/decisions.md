@@ -57,3 +57,8 @@ Format pentru fiecare decizie nouă:
 - Decizie: `vehicles` devine „unitate de transport”: `body_type` primește `RAIL_WAGON` și `DRONE`; `transport_mode` e coloană generată din tip; limitele fizice sunt pe tip (`vehicles_limits_by_type`); drona are zonă obligatorie (`service_district_ids`, validată de trigger). Vagonul și drona declară locurile ocupate în bloc (`set_vehicle_occupancy`), fără plan de podea. Frontend-ul citește tot ce diferă dintr-un singur catalog (`vehicle-catalog.ts`).
 - Alternative respinse: tabel separat per mod (ar dubla rezervările, contractele, bursa și RLS-ul); plan de podea palet cu palet pentru vagon (utilizatorul vrea locuri setate în bloc).
 - Schema v2 e editată pe loc (fișierele 02–05, 09), nu printr-o migrație nouă: baza v3 se inițializează din aceste fișiere.
+
+## 2026-09-26 — v3: stratul de date propriu păstrează interfața clientului
+- Decizie: în loc să rescriem componentele, un QueryBuilder propriu (`lib/query-builder.ts`) produce o descriere JSON a interogării; serverul o validează față de catalogul Postgres (doar tabelele/coloanele cu drept pentru `authenticated`) și o execută parametrizat, ca utilizatorul curent (SET LOCAL ROLE + request.jwt.claim.sub) → RLS-ul din 04 rămâne singura sursă de adevăr pentru acces.
+- Timp real: LISTEN/NOTIFY → SSE; serverul recitește rândul ca fiecare abonat (RLS) înainte să-l trimită.
+- Alternative respinse: PostgREST local (încă un binar de descărcat și pornit); ORM (ar ocoli RLS); WebSocket (SSE ajunge, e unidirecțional și trece prin CSP 'self').

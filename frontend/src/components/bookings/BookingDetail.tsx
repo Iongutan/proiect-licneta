@@ -8,7 +8,7 @@ import type { Booking, BookingMessage, Company, DeliveryProof, Side } from "@/li
 import { districtName } from "@/lib/districts";
 import { fmtDateTime, fmtKg, fmtMdl } from "@/lib/format";
 import { displayCompanyName, formatIdno } from "@/lib/idno-validator";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 
 interface AuditRow { id: number; action: string; created_at: string; details: Record<string, unknown> }
 interface VehicleInfo { id: string; plate: string; make_model: string }
@@ -38,18 +38,18 @@ interface BookingBundle {
 }
 
 async function fetchBooking(bookingId: string): Promise<BookingBundle | { error: string }> {
-  const supabase = supabaseBrowser();
-  const { data, error } = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
+  const db = dbBrowser();
+  const { data, error } = await db.from("bookings").select("*").eq("id", bookingId).maybeSingle();
   if (error) return { error: errorMessage(error) };
   const empty = { parties: {}, vehicle: null, driver: null, messages: [], proofs: [], audit: [] };
   if (!data) return { booking: null, ...empty };
   const [{ data: cs }, { data: v }, { data: d }, { data: m }, { data: p }, { data: a }] = await Promise.all([
-    supabase.from("companies").select("*").in("id", [data.shipper_company_id, data.carrier_company_id]),
-    supabase.from("vehicles").select("id, plate, make_model").eq("id", data.vehicle_id).maybeSingle(),
-    supabase.from("vehicle_private").select("driver_name, driver_phone").eq("vehicle_id", data.vehicle_id).maybeSingle(),
-    supabase.from("booking_messages").select("*").eq("booking_id", bookingId).order("created_at"),
-    supabase.from("delivery_proofs").select("*").eq("booking_id", bookingId).order("created_at"),
-    supabase.from("audit_log").select("id, action, created_at, details").eq("entity", "booking").eq("entity_id", bookingId).order("created_at"),
+    db.from("companies").select("*").in("id", [data.shipper_company_id, data.carrier_company_id]),
+    db.from("vehicles").select("id, plate, make_model").eq("id", data.vehicle_id).maybeSingle(),
+    db.from("vehicle_private").select("driver_name, driver_phone").eq("vehicle_id", data.vehicle_id).maybeSingle(),
+    db.from("booking_messages").select("*").eq("booking_id", bookingId).order("created_at"),
+    db.from("delivery_proofs").select("*").eq("booking_id", bookingId).order("created_at"),
+    db.from("audit_log").select("id, action, created_at, details").eq("entity", "booking").eq("entity_id", bookingId).order("created_at"),
   ]);
   return {
     booking: data as Booking,
@@ -96,22 +96,22 @@ export default function BookingDetail({ bookingId, companyId }: { bookingId: str
   }, [bookingId, version]);
 
   useEffect(() => {
-    const supabase = supabaseBrowser();
-    const channel = supabase
+    const db = dbBrowser();
+    const channel = db
       .channel(`booking:${bookingId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings", filter: `id=eq.${bookingId}` }, load)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "booking_messages", filter: `booking_id=eq.${bookingId}` },
         (payload) => setMessages((prev) => prev.some((x) => x.id === (payload.new as BookingMessage).id) ? prev : [...prev, payload.new as BookingMessage]))
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [bookingId, load]);
 
   const rpc = async (fn: string, args: Record<string, unknown>) => {
     setBusy(true);
     setError(null);
-    const { error: e } = await supabaseBrowser().rpc(fn, args);
+    const { error: e } = await dbBrowser().rpc(fn, args);
     setBusy(false);
     if (e) {
       setError(errorMessage(e));
@@ -360,9 +360,9 @@ function DeliverySection({ booking, side, proofs, driver, busy, rpc, setError, m
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     Promise.all(proofs.map(async (p) => {
-      const { data } = await supabase.storage.from("delivery-proofs").createSignedUrl(p.storage_path, 300);
+      const { data } = await db.storage.from("delivery-proofs").createSignedUrl(p.storage_path, 300);
       return [p.id, data?.signedUrl ?? ""] as const;
     })).then((pairs) => setUrls(Object.fromEntries(pairs)));
   }, [proofs]);
@@ -378,7 +378,7 @@ function DeliverySection({ booking, side, proofs, driver, busy, rpc, setError, m
     });
     const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
     const path = `${booking.id}/${crypto.randomUUID()}.${ext}`;
-    const { error: upErr } = await supabaseBrowser().storage.from("delivery-proofs").upload(path, file, { contentType: file.type, upsert: false });
+    const { error: upErr } = await dbBrowser().storage.from("delivery-proofs").upload(path, file, { contentType: file.type, upsert: false });
     if (upErr) {
       setUploading(false);
       return setError(errorMessage(upErr));
@@ -468,7 +468,7 @@ function Thread({ booking, companyId, messages, parties, canNegotiate, onError }
     if (!text && p === null) return;
     if (p !== null && (!Number.isFinite(p) || p < 0)) return onError("Preț invalid.");
     setSending(true);
-    const { error } = await supabaseBrowser().from("booking_messages").insert({
+    const { error } = await dbBrowser().from("booking_messages").insert({
       booking_id: booking.id, sender_company_id: companyId, body: text || `Propun ${p} MDL`, price_mdl: p,
     });
     setSending(false);

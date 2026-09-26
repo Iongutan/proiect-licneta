@@ -12,7 +12,7 @@ import { fmtDate, fmtDateTime, fmtKg, toLocalInput } from "@/lib/format";
 import {
   PALLET_SPECS, findFreeSpot, layoutTotals, validateLayout, type Floor, type Pallet,
 } from "@/lib/pallet-positioning";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS, MODE_LABEL, OWNERSHIP_LABEL } from "@/lib/vehicle-catalog";
 import DistrictAreaPicker from "./DistrictAreaPicker";
 import { STATUS_LABEL } from "./FleetList";
@@ -45,11 +45,11 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
 
   useEffect(() => {
     let active = true;
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     Promise.all([
-      supabase.from("vehicles_map").select("*").eq("id", vehicleId).maybeSingle(),
-      supabase.from("vehicle_loads").select("*").eq("vehicle_id", vehicleId).order("x_cm").order("y_cm"),
-      supabase.from("bookings").select("*").eq("vehicle_id", vehicleId).in("status", ["CONTRACTED", "IN_TRANSIT"]),
+      db.from("vehicles_map").select("*").eq("id", vehicleId).maybeSingle(),
+      db.from("vehicle_loads").select("*").eq("vehicle_id", vehicleId).order("x_cm").order("y_cm"),
+      db.from("bookings").select("*").eq("vehicle_id", vehicleId).in("status", ["CONTRACTED", "IN_TRANSIT"]),
     ]).then(([{ data: v, error }, { data: rows }, { data: bookings }]) => {
       if (!active) return;
       if (error) return setMessage({ kind: "error", text: errorMessage(error) });
@@ -118,7 +118,7 @@ export default function VehicleDetail({ vehicleId, companyId, isCompanyAdmin }: 
   const save = async () => {
     if (layoutError) return flash("error", layoutError);
     setSaving(true);
-    const { error } = await supabaseBrowser().rpc("save_vehicle_layout", {
+    const { error } = await dbBrowser().rpc("save_vehicle_layout", {
       p_vehicle: vehicle.id,
       p_items: pallets.map((p) => ({
         x_cm: Math.round(p.x), y_cm: Math.round(p.y), length_cm: Math.round(p.length), width_cm: Math.round(p.width),
@@ -301,13 +301,13 @@ function NumberField({ label, value, onChange, min, max }: { label: string; valu
 function VehicleSettings({ vehicle, onChanged, onDeleted }: { vehicle: MapVehicle; onChanged: () => void; onDeleted: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const update = async (patch: Record<string, unknown>) => {
-    const { error: e } = await supabaseBrowser().from("vehicles").update(patch).eq("id", vehicle.id);
+    const { error: e } = await dbBrowser().from("vehicles").update(patch).eq("id", vehicle.id);
     if (e) setError(errorMessage(e));
     else onChanged();
   };
   const remove = async () => {
     if (!confirm(`Ștergi definitiv ${BODY_SPECS[vehicle.body_type].short.toLowerCase()} ${vehicle.plate} din flotă?`)) return;
-    const { error: e, count } = await supabaseBrowser().from("vehicles").delete({ count: "exact" }).eq("id", vehicle.id);
+    const { error: e, count } = await dbBrowser().from("vehicles").delete({ count: "exact" }).eq("id", vehicle.id);
     if (e || !count) setError(e ? errorMessage(e) : "Unitatea are rezervări active și nu poate fi ștearsă.");
     else onDeleted();
   };
@@ -362,7 +362,7 @@ function TripPlanner({ vehicle, onChanged }: { vehicle: MapVehicle; onChanged: (
     } catch {
       // Fără OSRM: baza de date folosește linia dreaptă între raioane.
     }
-    const { error } = await supabaseBrowser().rpc("set_vehicle_trip", {
+    const { error } = await dbBrowser().rpc("set_vehicle_trip", {
       p_vehicle: vehicle.id, p_origin: o.id, p_destination: d.id, p_departure: new Date(departure).toISOString(),
       p_route: route?.geometry ?? null, p_distance_km: route?.distanceKm ?? null, p_duration_min: route?.durationMin ?? null,
     });
@@ -373,7 +373,7 @@ function TripPlanner({ vehicle, onChanged }: { vehicle: MapVehicle; onChanged: (
   };
 
   const clear = async () => {
-    const { error } = await supabaseBrowser().rpc("clear_vehicle_trip", { p_vehicle: vehicle.id });
+    const { error } = await dbBrowser().rpc("clear_vehicle_trip", { p_vehicle: vehicle.id });
     if (error) setStatus({ kind: "error", text: errorMessage(error) });
     else onChanged();
   };
@@ -421,7 +421,7 @@ function GpsPanel({ vehicle, canIssue, onChanged }: { vehicle: MapVehicle; canIs
 
   const issue = async () => {
     if (!confirm("Un token nou îl invalidează pe cel vechi. Continui?")) return;
-    const { data, error: e } = await supabaseBrowser().rpc("issue_device_token", { p_vehicle: vehicle.id });
+    const { data, error: e } = await dbBrowser().rpc("issue_device_token", { p_vehicle: vehicle.id });
     if (e) setError(errorMessage(e));
     else setToken(data as string);
   };
@@ -429,7 +429,7 @@ function GpsPanel({ vehicle, canIssue, onChanged }: { vehicle: MapVehicle; canIs
   const setManualPosition = async () => {
     const d = districtById(manual);
     if (!d) return;
-    const { error: e } = await supabaseBrowser().from("vehicles").update({
+    const { error: e } = await dbBrowser().from("vehicles").update({
       position: `SRID=4326;POINT(${d.lon} ${d.lat})`, district_id: d.id, position_at: new Date().toISOString(), speed_kmh: 0,
     }).eq("id", vehicle.id);
     if (e) setError(errorMessage(e));
@@ -489,7 +489,7 @@ function OccupancyPanel({ vehicle, readOnly, onChanged }: { vehicle: MapVehicle;
   const save = async () => {
     setPending(true);
     setStatus(null);
-    const { error } = await supabaseBrowser().rpc("set_vehicle_occupancy", { p_vehicle: vehicle.id, p_places: places, p_weight_kg: places ? weight : 0 });
+    const { error } = await dbBrowser().rpc("set_vehicle_occupancy", { p_vehicle: vehicle.id, p_places: places, p_weight_kg: places ? weight : 0 });
     setPending(false);
     if (error) return setStatus({ kind: "error", text: errorMessage(error) });
     setStatus({ kind: "info", text: `Salvat: ${free} ${spec.placeUnit} libere apar acum în bursă.` });
@@ -553,7 +553,7 @@ function AreaPanel({ vehicle, onChanged }: { vehicle: MapVehicle; onChanged: () 
     if (!area.length) return setStatus({ kind: "error", text: "Alege cel puțin un raion." });
     setPending(true);
     setStatus(null);
-    const { error } = await supabaseBrowser().from("vehicles").update({ service_district_ids: area }).eq("id", vehicle.id);
+    const { error } = await dbBrowser().from("vehicles").update({ service_district_ids: area }).eq("id", vehicle.id);
     setPending(false);
     if (error) return setStatus({ kind: "error", text: errorMessage(error) });
     setStatus({ kind: "info", text: "Zona a fost salvată. Expeditorii din aceste raioane găsesc drona la căutare." });

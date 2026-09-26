@@ -98,3 +98,8 @@ acest fișier niciodată.
 **Discutat:** utilizatorul a instalat/reconectat aplicația GitHub, dar sesiunea tot primește 403 la push; o sesiune-copil a cerut confirmare directă, iar pornirea alteia a fost refuzată de mediu. Utilizatorul: „fă alt branch, pe acela îl șterg mai târziu; continuă dezvoltarea”.
 **Făcut:** date demo cu vagon (închiriat, 32/50 ocupate) și dronă (zonă de 5 raioane); panoul de pe hartă folosește unitatea tipului (compartimente/paleți), zona dronei și nu arată plan de podea la vagon/dronă. Teste: SQL 58, vitest 29, tsc/eslint curate.
 **Rămas:** urcarea pe GitHub (bundle → ramură nouă); planul v3 local autonom.
+
+## 2026-09-26 (după-amiază) — v3 local autonom funcțional
+**Făcut:** stratul local complet (PostgreSQL proces-copil + auth/date/fișiere/timp real în Next.js), `@supabase/*` scos, manual de pornire rescris, F5 în VS Code = `npm run dev`. Teste: SQL 58 (pe baza locală, fără Docker), vitest 29, E2E în browser trecut cap-coadă.
+**Rămas:** constructor paleți drag & drop + locuri libere/ocupate; asistentul „am un frigider”; test pe Windows real; curățarea fișierelor Docker/Supabase; urcarea pe GitHub (bundle).
+**Atenționări:** PostgreSQL refuză root pe Linux; pe Windows, Stop din VS Code trebuie să trimită Ctrl+C (launch.json = node-terminal) ca baza să se oprească curat; altfel `npm run stop`.

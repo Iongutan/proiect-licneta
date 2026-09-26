@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import MapScreen from "@/components/map/MapScreen";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 export const metadata: Metadata = { title: "Hartă" };
 

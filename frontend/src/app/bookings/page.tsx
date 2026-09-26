@@ -5,7 +5,7 @@ import { BOOKING_STATUS } from "@/lib/booking-status";
 import type { Booking } from "@/lib/db-types";
 import { districtName } from "@/lib/districts";
 import { fmtDateTime, fmtMdl } from "@/lib/format";
-import { getViewer, supabaseServer } from "@/lib/supabase-server";
+import { getViewer, dbServer } from "@/lib/db-server";
 
 export const metadata: Metadata = { title: "Contracte" };
 
@@ -15,14 +15,14 @@ export default async function BookingsPage() {
   const me = viewer?.company?.id;
   if (!me) redirect("/account");
 
-  const supabase = await supabaseServer();
-  const { data } = await supabase.from("bookings").select("*").order("updated_at", { ascending: false }).limit(300);
+  const db = await dbServer();
+  const { data } = await db.from("bookings").select("*").order("updated_at", { ascending: false }).limit(300);
   const bookings = (data ?? []) as Booking[];
   const partyIds = [...new Set(bookings.flatMap((b) => [b.shipper_company_id, b.carrier_company_id]))];
   const vehicleIds = [...new Set(bookings.map((b) => b.vehicle_id))];
   const [{ data: companies }, { data: vehicles }] = await Promise.all([
-    supabase.from("companies").select("id, name").in("id", partyIds.length ? partyIds : ["00000000-0000-0000-0000-000000000000"]),
-    supabase.from("vehicles").select("id, plate").in("id", vehicleIds.length ? vehicleIds : ["00000000-0000-0000-0000-000000000000"]),
+    db.from("companies").select("id, name").in("id", partyIds.length ? partyIds : ["00000000-0000-0000-0000-000000000000"]),
+    db.from("vehicles").select("id, plate").in("id", vehicleIds.length ? vehicleIds : ["00000000-0000-0000-0000-000000000000"]),
   ]);
   const name = new Map((companies ?? []).map((c) => [c.id, c.name]));
   const plate = new Map((vehicles ?? []).map((v) => [v.id, v.plate]));

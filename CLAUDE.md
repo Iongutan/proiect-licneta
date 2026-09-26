@@ -56,25 +56,28 @@ _Ultima actualizare: 2026-09-26 (branch `refresh/v2`, ne-unit cu main)_
 - Vercel: doar eventual un demo de prezentare, mai târziu — NU prioritate.
 - Stabil, sigur, optimizat, fără „încărcări” inutile.
 
-## Planul v3 „local autonom” (în lucru)
-1. **Runtime portabil:** `npm run setup` descarcă PostgreSQL 17.6 Windows zip (EDB, conține și pgAdmin, ~330 MB,
-   URL verificat: get.enterprisedb.com/postgresql/postgresql-17.6-1-windows-x64-binaries.zip) + PostGIS bundle
-   (download.osgeo.org/postgis/windows/pg17/postgis-bundle-pg17-3.6.2x64.zip) în `.runtime/` (gitignored);
-   initdb în `.data/pg`, doar 127.0.0.1, parole aleatoare în `.data/credentials.json` (gitignored).
-2. **Pornire/oprire:** script Node care pornește `postgres.exe` ca proces COPIL (nu pg_ctl detașat) + `next dev`;
-   la oprirea din IDE se opresc amândouă.
-3. **Shim SQL** (`00_local_platform.sql`): rolurile anon/authenticated, schema `auth` (users, sessions, uid()),
-   schema `storage` (buckets, objects, foldername), publicația realtime → fișierele `supabase/sql/01–10` rămân
-   aproape neschimbate (RLS, RPC, teste).
-4. **Înlocuiri în Next.js:** auth propriu (parole scrypt din Node crypto — fără module native, pentru că Windows
-   blochează binarele .node, vezi SWC; sesiuni în DB, cookie httpOnly); `/api/db` (client tip PostgREST: tabele/coloane
-   validate din catalog, valori parametrizate, rulat ca `authenticated` cu `request.jwt.claim.sub` → RLS);
-   `/api/rpc/[fn]` cu listă albă; fișiere pe disc cu verificare prin `storage.objects` + RLS; timp real prin
-   SSE + LISTEN/NOTIFY (evenimentele trimit doar id-uri; clientul reîncarcă prin RLS).
-5. Grupaj DBSCAN portat în TypeScript (fără Python). OSRM/ML/Ollama = opționale, nu obligatorii.
-6. `devIndicators: false` în next.config (fără popup de dezvoltare).
-7. Teste: SQL pe runtime-ul portabil (fără Docker), apoi E2E în browser.
-8. De curățat după: `infra/local` (Docker), dependențele `@supabase/*`, `docker-compose.yml`, `ml_service` devine opțional.
+## v3 „local autonom” — FUNCȚIONAL (pornire: F5 / `npm run dev`)
+- `frontend/scripts/optifleet.mjs`: PostgreSQL ca proces-copil (Windows: descarcă EDB 17.6 + PostGIS în `.runtime/`;
+  Linux/macOS: pachetul sistemului), `.data/pg` pe 127.0.0.1:5433, parole în `.data/credentials.json`, migrații
+  urmărite în `platform.migrations` (fără 00_reset și fără 08 demo), apoi `next dev`; comenzi: dev/start/db/stop/
+  status/admin/backup/reset/test-db.
+- `db/platform/00_platform.sql` (roluri anon/authenticated/optifleet_app, auth.users+sessions, auth.uid(), storage,
+  publicație) și `90_realtime.sql` (triggere pg_notify).
+- Next.js: `lib/server/{db,auth,query,rpc,storage,realtime}.ts`, rute `/api/{auth/*,db,rpc/[fn],storage/[bucket],realtime}`;
+  client `lib/db-browser.ts` / `lib/db-server.ts` cu aceeași formă from()/rpc()/channel()/storage (`lib/query-builder.ts`).
+  `@supabase/*` eliminat; CSP connect-src doar 'self'; `devIndicators: false`.
+- Verificat: SQL 58 aserțiuni (`npm run test:db`), vitest 29, tsc/eslint, E2E în browser (`npm run e2e`):
+  înregistrare 3 firme, KYC de admin, vagon (38/50) + dronă, cerere de locuri, notificare live.
+- Netestat încă pe Windows real: descărcarea/dezarhivarea runtime-ului (`tar -xf` pe .zip) și oprirea la Stop din VS Code.
+- De curățat: `infra/local` (Docker), `docker-compose.yml`, `OptiFleet.cmd` vechi, README (încă descrie Supabase).
+
+## Cerințe noi ale utilizatorului (urmează)
+1. Constructor de flotă simplu: locuri ocupate/goale vizibile, tipuri de paleți trase cu drag & drop pe podea.
+2. În „Flota mea”, o fereastră-asistent: scrii „am un frigider” → se construiește în aceeași pagină (nu pagină
+   separată) formularul unității, precompletat cu ce știe platforma despre firmă. Fără API extern (parser local;
+   Ollama opțional).
+3. Producătorii (expeditorii) își pun marfa pe platformă — există deja ca cereri de transport; de verificat UX-ul.
+4. FĂRĂ date demo: utilizatorul își introduce singur vehiculele.
 
 ## Ce s-a făcut până acum (istoric scurt)
 - **Flotă multimodală (o singură flotă a SRL-ului, o singură interfață):** tipuri noi `RAIL_WAGON` (vagon de tren,

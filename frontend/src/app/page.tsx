@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import VehicleSide from "@/components/logistics/VehicleBlueprintSVG";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 export default async function HomePage() {
   if (await getViewer()) redirect("/map");

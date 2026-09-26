@@ -7,7 +7,7 @@ import type { MapVehicle, TripMatch } from "@/lib/db-types";
 import { districtById, districtName } from "@/lib/districts";
 import { fmtRelative, fmtTime } from "@/lib/format";
 import { parseSearchIntent, type SearchIntent } from "@/lib/search-intent";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS } from "@/lib/vehicle-catalog";
 import VehicleDrawer from "./VehicleDrawer";
 
@@ -58,7 +58,7 @@ export default function MapScreen({ companyId, companyVerified, canShip, homeDis
 
   // ── Date: vehiculele vizibile (RLS) + actualizări live (K10) ──
   const refreshVehicle = useCallback(async (id: string) => {
-    const { data } = await supabaseBrowser().from("vehicles_map").select("*").eq("id", id).maybeSingle();
+    const { data } = await dbBrowser().from("vehicles_map").select("*").eq("id", id).maybeSingle();
     setVehicles((prev) => {
       const rest = prev.filter((v) => v.id !== id);
       return data ? [...rest, data as MapVehicle] : rest;
@@ -66,9 +66,9 @@ export default function MapScreen({ companyId, companyVerified, canShip, homeDis
   }, []);
 
   useEffect(() => {
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     let active = true;
-    supabase.from("vehicles_map").select("*").in("status", ["AVAILABLE", "ON_ROUTE"]).limit(5000)
+    db.from("vehicles_map").select("*").in("status", ["AVAILABLE", "ON_ROUTE"]).limit(5000)
       .then(({ data, error }) => {
         if (!active) return;
         if (error) setNotice(errorMessage(error));
@@ -88,7 +88,7 @@ export default function MapScreen({ companyId, companyVerified, canShip, homeDis
         ids.forEach(refreshVehicle);
       }, 800);
     };
-    const channel = supabase
+    const channel = db
       .channel("map-vehicles")
       .on("postgres_changes", { event: "*", schema: "public", table: "vehicles" }, (p) =>
         queue(((p.new as { id?: string })?.id ?? (p.old as { id?: string })?.id)))
@@ -96,26 +96,26 @@ export default function MapScreen({ companyId, companyVerified, canShip, homeDis
     return () => {
       active = false;
       if (timer) clearTimeout(timer);
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [refreshVehicle]);
 
   // K4.4: sugestii proactive — vehicule cu locuri care trec pe lângă sediu
   useEffect(() => {
     if (!canShip || !companyId) return;
-    supabaseBrowser().rpc("vehicles_passing_near_me", { p_radius_km: 15, p_min_free: 1 })
+    dbBrowser().rpc("vehicles_passing_near_me", { p_radius_km: 15, p_min_free: 1 })
       .then(({ data }) => data && setNearMe(data as NearMe[]));
   }, [canShip, companyId]);
 
   // Traseul vehiculului selectat
   useEffect(() => {
     if (!selectedId) return;
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     // Vehiculul poate lipsi din lista inițială (ex. deschis din pagina unui contract).
-    supabase.from("vehicles_map").select("*").eq("id", selectedId).maybeSingle().then(({ data }) => {
+    db.from("vehicles_map").select("*").eq("id", selectedId).maybeSingle().then(({ data }) => {
       if (data) setVehicles((prev) => [...prev.filter((v) => v.id !== selectedId), data as MapVehicle]);
     });
-    supabase.rpc("vehicle_route", { p_vehicle: selectedId })
+    db.rpc("vehicle_route", { p_vehicle: selectedId })
       .then(({ data }) => setRouteFor({ id: selectedId, geo: (data as GeoJSON.LineString | null) ?? null }));
   }, [selectedId]);
   const route = routeFor && routeFor.id === selectedId ? routeFor.geo : null;
@@ -148,7 +148,7 @@ export default function MapScreen({ companyId, companyVerified, canShip, homeDis
 
     setIntent(parsed);
     setSearching(true);
-    const { data, error } = await supabaseBrowser().rpc("search_trips", {
+    const { data, error } = await dbBrowser().rpc("search_trips", {
       p_origin: parsed.origin?.id ?? null,
       p_destination: parsed.destination?.id ?? null,
       p_min_free: parsed.pallets ?? 0,

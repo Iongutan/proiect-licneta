@@ -1,34 +1,31 @@
-// Rulează înaintea fiecărei pagini:
-//  1. reîmprospătează și verifică sesiunea Supabase (cookie-uri httpOnly gestionate de @supabase/ssr);
+// Rulează înaintea fiecărei pagini (runtime Node.js):
+//  1. verifică sesiunea (cookie httpOnly → auth.sessions în baza locală);
 //  2. trimite la /login vizitatorii neautentificați ai paginilor protejate;
 //  3. setează un Content-Security-Policy strict, cu nonce nou la fiecare request.
+// Aplicația nu mai vorbește cu niciun serviciu extern: connect-src e doar 'self'.
 
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/env";
+import { SESSION_COOKIE, sessionUser } from "@/lib/server/auth";
 
 const PROTECTED = ["/map", "/fleet", "/requests", "/bookings", "/account", "/admin"];
 const AUTH_PAGES = ["/login", "/register"];
 
 function contentSecurityPolicy(nonce: string): string {
   const dev = process.env.NODE_ENV === "development";
-  const supabase = new URL(SUPABASE_URL);
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     `style-src 'self' 'nonce-${nonce}'`,
     // Leaflet și poziționarea markerilor folosesc atribute style; nu permit <style> fără nonce.
     "style-src-attr 'unsafe-inline'",
-    `img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org ${supabase.origin}`,
+    "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
     "font-src 'self'",
-    // Realtime: wss pentru https (producție), ws doar pentru baza locală pe http.
-    `connect-src 'self' ${supabase.origin} ${supabase.protocol === "https:" ? "wss" : "ws"}://${supabase.host}${dev ? " ws:" : ""}`,
+    `connect-src 'self'${dev ? " ws:" : ""}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    ...(dev || supabase.protocol !== "https:" ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 
@@ -40,39 +37,26 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
 
-  let response = NextResponse.next({ request: { headers: requestHeaders } });
-
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll: (toSet) => {
-        for (const { name, value } of toSet) request.cookies.set(name, value);
-        response = NextResponse.next({ request: { headers: requestHeaders } });
-        for (const { name, value, options } of toSet) response.cookies.set(name, value, options);
-      },
-    },
-  });
-
-  // getClaims verifică semnătura JWT (JWKS) și reîmprospătează sesiunea expirată.
-  const { data } = await supabase.auth.getClaims();
-  const signedIn = Boolean(data?.claims?.sub);
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const user = token ? await sessionUser(token).catch(() => null) : null;
   const { pathname, search } = request.nextUrl;
 
-  const redirect = (to: string) => {
-    const res = NextResponse.redirect(new URL(to, request.url));
-    for (const cookie of response.cookies.getAll()) res.cookies.set(cookie);
+  const withCleanup = (res: NextResponse) => {
+    // Cookie de sesiune expirat sau șters din baza de date → îl ștergem și din browser.
+    if (token && !user) res.cookies.delete(SESSION_COOKIE);
     return res;
   };
 
-  if (!signedIn && PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-    return redirect(`/login?next=${encodeURIComponent(pathname + search)}`);
+  if (!user && PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return withCleanup(NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(pathname + search)}`, request.url)));
   }
-  if (signedIn && AUTH_PAGES.includes(pathname)) {
-    return redirect("/map");
+  if (user && AUTH_PAGES.includes(pathname)) {
+    return NextResponse.redirect(new URL("/map", request.url));
   }
 
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", csp);
-  return response;
+  return withCleanup(response);
 }
 
 export const config = {

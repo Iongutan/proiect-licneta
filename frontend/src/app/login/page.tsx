@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { safeNextPath } from "@/lib/safe-redirect";
 import { AuthFrame } from "@/components/shell/AuthFrame";
-import { supabaseBrowser } from "@/lib/supabase";
 
 export default function LoginPage() {
   return (
@@ -23,19 +22,22 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(params.get("error") === "link" ? "Linkul de confirmare a expirat sau e invalid." : null);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPending(true);
     setError(null);
-    const { error: authError } = await supabaseBrowser().auth.signInWithPassword({ email: email.trim(), password });
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password }),
+    }).catch(() => null);
     setPending(false);
-    if (authError) {
+    if (!res?.ok) {
       // Mesaj generic: nu dezvăluim dacă adresa există.
-      setError(authError.message.toLowerCase().includes("not confirmed")
-        ? "Confirmă întâi adresa de email (verifică inbox-ul)."
-        : "Email sau parolă greșită.");
+      const body = (await res?.json().catch(() => null)) as { error?: string } | null;
+      setError(res ? body?.error ?? "Email sau parolă greșită." : "Serverul nu răspunde. Verifică dacă aplicația rulează.");
       return;
     }
     router.replace(safeNextPath(params.get("next")));

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import BookingDetail from "@/components/bookings/BookingDetail";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 export const metadata: Metadata = { title: "Contract" };
 

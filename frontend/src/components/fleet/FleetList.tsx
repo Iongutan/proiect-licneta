@@ -8,7 +8,7 @@ import VehicleSide from "@/components/logistics/VehicleBlueprintSVG";
 import type { MapVehicle, TransportMode, VehicleLoad } from "@/lib/db-types";
 import { districtName } from "@/lib/districts";
 import { fmtDate, fmtDateTime, fmtKg } from "@/lib/format";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS, MODE_LABEL, OWNERSHIP_LABEL } from "@/lib/vehicle-catalog";
 import VehicleWizard from "./VehicleWizard";
 
@@ -20,13 +20,13 @@ export const STATUS_LABEL: Record<MapVehicle["status"], { text: string; cls: str
 };
 
 async function fetchFleet(companyId: string): Promise<{ vehicles: MapVehicle[]; loads: Record<string, VehicleLoad[]> } | { error: string }> {
-  const supabase = supabaseBrowser();
-  const { data, error } = await supabase.from("vehicles_map").select("*").eq("company_id", companyId).order("plate");
+  const db = dbBrowser();
+  const { data, error } = await db.from("vehicles_map").select("*").eq("company_id", companyId).order("plate");
   if (error) return { error: errorMessage(error) };
   const vehicles = (data ?? []) as MapVehicle[];
   const loads: Record<string, VehicleLoad[]> = {};
   if (vehicles.length) {
-    const { data: rows } = await supabase.from("vehicle_loads").select("*").in("vehicle_id", vehicles.map((v) => v.id));
+    const { data: rows } = await db.from("vehicle_loads").select("*").in("vehicle_id", vehicles.map((v) => v.id));
     for (const r of (rows ?? []) as VehicleLoad[]) (loads[r.vehicle_id] ??= []).push(r);
   }
   return { vehicles, loads };

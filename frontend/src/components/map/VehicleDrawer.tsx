@@ -12,7 +12,7 @@ import { DISTRICTS, districtById, districtName } from "@/lib/districts";
 import { fmtDateTime, fmtKg, fmtMdl, fmtRelative, fmtTime, toLocalInput } from "@/lib/format";
 import type { Floor } from "@/lib/pallet-positioning";
 import type { SearchIntent } from "@/lib/search-intent";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS } from "@/lib/vehicle-catalog";
 
 interface Props {
@@ -40,24 +40,24 @@ export default function VehicleDrawer({ vehicle, match, intent, companyId, compa
   const [myContract, setMyContract] = useState<Booking | null>(null);
 
   useEffect(() => {
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     let active = true;
     const fetchLoads = () =>
-      supabase.from("vehicle_loads").select("*").eq("vehicle_id", vehicle.id)
+      db.from("vehicle_loads").select("*").eq("vehicle_id", vehicle.id)
         .then(({ data }) => active && setLoads((data ?? []) as VehicleLoad[]));
     fetchLoads();
     // Contractele vizibile sunt doar cele în care firma mea e parte (RLS).
-    supabase.from("bookings").select("*").eq("vehicle_id", vehicle.id).in("status", ["CONTRACTED", "IN_TRANSIT"])
+    db.from("bookings").select("*").eq("vehicle_id", vehicle.id).in("status", ["CONTRACTED", "IN_TRANSIT"])
       .order("updated_at", { ascending: false }).limit(1)
       .then(({ data }) => active && setMyContract((data?.[0] as Booking) ?? null));
 
-    const channel = supabase
+    const channel = db
       .channel(`loads:${vehicle.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "vehicle_loads", filter: `vehicle_id=eq.${vehicle.id}` }, fetchLoads)
       .subscribe();
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [vehicle.id]);
 
@@ -172,7 +172,7 @@ function RequestPallets({ vehicle, intent, verified, companyId }: { vehicle: Map
 
   useEffect(() => {
     if (!open || !companyId) return;
-    supabaseBrowser().from("freight_requests").select("*").eq("company_id", companyId).eq("status", "OPEN").order("created_at", { ascending: false }).limit(20)
+    dbBrowser().from("freight_requests").select("*").eq("company_id", companyId).eq("status", "OPEN").order("created_at", { ascending: false }).limit(20)
       .then(({ data }) => setMyRequests((data ?? []) as FreightRequest[]));
   }, [open, companyId]);
 
@@ -205,7 +205,7 @@ function RequestPallets({ vehicle, intent, verified, companyId }: { vehicle: Map
     if (p !== null && (!Number.isFinite(p) || p < 0)) return setError("Preț invalid.");
     setPending(true);
     setError(null);
-    const { data, error: rpcError } = await supabaseBrowser().rpc("propose_booking", {
+    const { data, error: rpcError } = await dbBrowser().rpc("propose_booking", {
       p_vehicle: vehicle.id, p_pallets: pallets, p_weight_kg: weight, p_pickup: pickup, p_dropoff: dropoff,
       p_pickup_at: new Date(when).toISOString(), p_price: p, p_request: requestId || null, p_message: message.trim() || null,
     });

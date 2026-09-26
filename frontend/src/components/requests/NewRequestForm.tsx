@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import type { BodyType } from "@/lib/db-types";
 import { DISTRICTS, districtById } from "@/lib/districts";
 import { toLocalInput } from "@/lib/format";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS, BODY_TYPES } from "@/lib/vehicle-catalog";
 import type { LatLon } from "./PointPicker";
 
@@ -70,7 +70,7 @@ export default function NewRequestForm({ companyId, homeDistrict, onClose, onCre
     const dp = destination.point ?? { lat: d.lat, lon: d.lon };
     setPending(true);
     setError(null);
-    const { error: insertError } = await supabaseBrowser().from("freight_requests").insert({
+    const { error: insertError } = await dbBrowser().from("freight_requests").insert({
       company_id: companyId,
       origin_district_id: o.id,
       origin_address: origin.address.trim() || null,

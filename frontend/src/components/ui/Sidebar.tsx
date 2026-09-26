@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CompanyKind, KycStatus, Notification } from "@/lib/db-types";
 import { fmtDateTime } from "@/lib/format";
-import { supabaseBrowser } from "@/lib/supabase";
+import { dbBrowser } from "@/lib/db-browser";
 
 export interface SidebarViewer {
   fullName: string | null;
@@ -43,7 +43,7 @@ export default function Sidebar({ viewer }: { viewer: SidebarViewer }) {
   const router = useRouter();
 
   const signOut = async () => {
-    await supabaseBrowser().auth.signOut();
+    await dbBrowser().auth.signOut();
     router.replace("/login");
     router.refresh();
   };
@@ -105,16 +105,16 @@ function NotificationBell({ companyId }: { companyId: string }) {
   const unread = items.filter((n) => !n.read_at).length;
 
   useEffect(() => {
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     let active = true;
-    supabase
+    db
       .from("notifications")
       .select("id, kind, title, body, link, read_at, created_at")
       .order("created_at", { ascending: false })
       .limit(20)
       .then(({ data }) => active && data && setItems(data));
 
-    const channel = supabase
+    const channel = db
       .channel(`notifications:${companyId}`)
       .on(
         "postgres_changes",
@@ -124,12 +124,12 @@ function NotificationBell({ companyId }: { companyId: string }) {
       .subscribe();
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [companyId]);
 
   const markAllRead = async () => {
-    await supabaseBrowser().rpc("mark_notifications_read");
+    await dbBrowser().rpc("mark_notifications_read");
     setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
   };
 

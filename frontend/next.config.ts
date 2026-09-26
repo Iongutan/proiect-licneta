@@ -12,6 +12,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Fără indicatorul/popup-ul de dezvoltare Next.js în colțul paginii.
+  devIndicators: false,
+  // pg are o dependență opțională nativă (pg-native) pe care nu o folosim.
+  serverExternalPackages: ["pg"],
   reactStrictMode: true,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

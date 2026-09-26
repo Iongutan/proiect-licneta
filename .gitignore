@@ -64,3 +64,7 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 .agents/
+
+# OptiFleet local (v3): baza de date, fișiere încărcate, runtime PostgreSQL descărcat
+.data/
+.runtime/

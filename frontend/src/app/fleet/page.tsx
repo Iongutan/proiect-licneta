@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import FleetList from "@/components/fleet/FleetList";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 export const metadata: Metadata = { title: "Flota mea" };
 

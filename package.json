@@ -1,20 +1,21 @@
 {
   "name": "optifleet-b2b",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "description": "OptiFleet B2B — bursă de transport marfă pentru IMM-urile din Republica Moldova (UTM FCIM)",
   "scripts": {
-    "dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build",
-    "start": "npm --prefix frontend start",
-    "services:up": "docker compose up -d",
-    "services:down": "docker compose down",
-    "services:logs": "docker compose logs -f",
-    "stop": "docker compose down",
+    "dev": "node frontend/scripts/optifleet.mjs dev",
+    "start": "npm --prefix frontend run build && node frontend/scripts/optifleet.mjs start",
+    "db": "node frontend/scripts/optifleet.mjs db",
+    "setup": "npm install --prefix frontend && node frontend/scripts/optifleet.mjs setup",
+    "stop": "node frontend/scripts/optifleet.mjs stop",
+    "status": "node frontend/scripts/optifleet.mjs status",
+    "admin": "node frontend/scripts/optifleet.mjs admin",
+    "backup": "node frontend/scripts/optifleet.mjs backup",
+    "reset": "node frontend/scripts/optifleet.mjs reset",
     "test": "npm --prefix frontend test && npm --prefix frontend run typecheck && npm --prefix frontend run lint",
-    "test:db": "bash supabase/tests/run.sh",
-    "test:api": "bash supabase/tests/api-contract.sh",
-    "test:ml": "docker compose run --rm ml_service python -m pytest -q"
+    "test:db": "node frontend/scripts/optifleet.mjs test-db",
+    "e2e": "node frontend/scripts/e2e.mjs"
   },
   "author": "Ion Guțan (TI-233)",
   "license": "MIT"

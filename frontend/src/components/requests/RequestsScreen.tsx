@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import type { Booking, FreightRequest, MapVehicle, RequestStatus } from "@/lib/db-types";
 import { districtName } from "@/lib/districts";
 import { fmtDateTime, fmtKg, fmtMdl } from "@/lib/format";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import { BODY_SPECS } from "@/lib/vehicle-catalog";
 import NewRequestForm from "./NewRequestForm";
 
@@ -69,10 +69,10 @@ function MyRequests({ companyId, homeDistrict }: { companyId: string; homeDistri
 
   useEffect(() => {
     let active = true;
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     Promise.all([
-      supabase.from("freight_requests").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200),
-      supabase.from("bookings").select("request_id, status").eq("shipper_company_id", companyId).not("request_id", "is", null),
+      db.from("freight_requests").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200),
+      db.from("bookings").select("request_id, status").eq("shipper_company_id", companyId).not("request_id", "is", null),
     ]).then(([{ data, error: e }, { data: b }]) => {
       if (!active) return;
       if (e) return setError(errorMessage(e));
@@ -90,7 +90,7 @@ function MyRequests({ companyId, homeDistrict }: { companyId: string; homeDistri
 
   const cancel = async (id: string) => {
     if (!confirm("Anulezi cererea? Negocierile deschise se închid.")) return;
-    const { error: e } = await supabaseBrowser().rpc("cancel_request", { p_request: id });
+    const { error: e } = await dbBrowser().rpc("cancel_request", { p_request: id });
     if (e) setError(errorMessage(e));
     else load();
   };
@@ -156,7 +156,7 @@ function Market({ companyId, verified }: { companyId: string; verified: boolean 
 
   useEffect(() => {
     if (!verified) return;
-    supabaseBrowser().from("freight_requests_geo").select("*").eq("status", "OPEN").neq("company_id", companyId)
+    dbBrowser().from("freight_requests_geo").select("*").eq("status", "OPEN").neq("company_id", companyId)
       .gte("deliver_by", new Date().toISOString()).order("ready_from").limit(300)
       .then(({ data, error: e }) => (e ? setError(errorMessage(e)) : setRows((data ?? []) as Row[])));
     fetch("/api/grouping").then(async (res) => {
@@ -236,7 +236,7 @@ function OfferDialog({ request, companyId, onClose }: { request: Row; companyId:
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    supabaseBrowser().from("vehicles_map").select("*").eq("company_id", companyId).gte("free_pallets", request.pallets).order("plate")
+    dbBrowser().from("vehicles_map").select("*").eq("company_id", companyId).gte("free_pallets", request.pallets).order("plate")
       .then(({ data }) => {
         const list = ((data ?? []) as MapVehicle[]).filter((v) => !request.body_type || v.body_type === request.body_type)
           .filter((v) => !request.needs_reefer || v.has_reefer);
@@ -251,7 +251,7 @@ function OfferDialog({ request, companyId, onClose }: { request: Row; companyId:
     const p = price.trim() ? Number(price) : null;
     if (p !== null && (!Number.isFinite(p) || p < 0)) return setError("Preț invalid.");
     setPending(true);
-    const { data, error: e2 } = await supabaseBrowser().rpc("propose_booking", {
+    const { data, error: e2 } = await dbBrowser().rpc("propose_booking", {
       p_vehicle: vehicleId, p_pallets: request.pallets, p_weight_kg: request.weight_kg,
       p_pickup: request.origin_district_id, p_dropoff: request.destination_district_id,
       p_pickup_at: request.ready_from, p_price: p, p_request: request.id, p_message: message.trim() || null,

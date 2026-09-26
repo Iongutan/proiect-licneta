@@ -6,7 +6,6 @@ import { useState } from "react";
 import type { CompanyKind, LegalForm } from "@/lib/db-types";
 import { DISTRICTS } from "@/lib/districts";
 import { LEGAL_FORMS, idnoError, normalizeIdno } from "@/lib/idno-validator";
-import { supabaseBrowser } from "@/lib/supabase";
 import { AuthFrame } from "@/components/shell/AuthFrame";
 
 const KINDS: Array<{ id: CompanyKind; title: string; hint: string }> = [
@@ -50,7 +49,6 @@ export default function RegisterPage() {
   const [touched, setTouched] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
 
   const errors = validate(form);
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -62,11 +60,12 @@ export default function RegisterPage() {
     if (Object.keys(errors).length) return;
     setPending(true);
     setError(null);
-    const { data, error: signUpError } = await supabaseBrowser().auth.signUp({
-      email: form.email.trim(),
-      password: form.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: form.email.trim(),
+        password: form.password,
         data: {
           full_name: form.fullName.trim(),
           company_name: form.companyName.trim(),
@@ -75,34 +74,17 @@ export default function RegisterPage() {
           company_kind: form.kind,
           district_id: form.districtId,
         },
-      },
-    });
+      }),
+    }).catch(() => null);
     setPending(false);
-    if (signUpError) {
-      setError(/database error/i.test(signUpError.message)
-        ? "Nu am putut crea firma. Verifică IDNO-ul — poate e deja înregistrat."
-        : signUpError.message);
+    if (!res?.ok) {
+      const body = (await res?.json().catch(() => null)) as { error?: string } | null;
+      setError(res ? body?.error ?? "Contul nu a putut fi creat." : "Serverul nu răspunde. Verifică dacă aplicația rulează.");
       return;
     }
-    if (data.session) {
-      router.replace("/map");
-      router.refresh();
-    } else {
-      setSentTo(form.email.trim());
-    }
+    router.replace("/map");
+    router.refresh();
   };
-
-  if (sentTo) {
-    return (
-      <AuthFrame title="Confirmă adresa de email" subtitle="Ultimul pas">
-        <p className="t-body">
-          Am trimis un link de confirmare la <strong>{sentTo}</strong>. După confirmare poți intra în cont.
-          Firma va fi verificată de un administrator înainte de a putea rezerva transport.
-        </p>
-        <Link href="/login" className="btn btn-secondary mt-5 w-full">Înapoi la autentificare</Link>
-      </AuthFrame>
-    );
-  }
 
   return (
     <AuthFrame title="Înregistrează firma" subtitle="Contul aparține firmei; denumirea apare în antetul platformei.">

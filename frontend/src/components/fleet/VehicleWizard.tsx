@@ -12,7 +12,7 @@ import VehicleSide from "@/components/logistics/VehicleBlueprintSVG";
 import type { BodyType, Ownership } from "@/lib/db-types";
 import { DISTRICTS } from "@/lib/districts";
 import { geometricCapacity } from "@/lib/pallet-positioning";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 import {
   BODY_SPECS, GPS_PROTOCOLS, MODE_LABEL, OWNERSHIP_LABEL, capacityErrors, findBodyTypes, idPatternFor, normalizeUnitId,
 } from "@/lib/vehicle-catalog";
@@ -113,9 +113,9 @@ export default function VehicleWizard({ companyId, homeDistrict, onClose, onCrea
     if (Object.keys(errors).length) return;
     setPending(true);
     setError(null);
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     const district = DISTRICTS.find((x) => x.id === d.districtId);
-    const { data, error: insertError } = await supabase
+    const { data, error: insertError } = await db
       .from("vehicles")
       .insert({
         company_id: companyId,
@@ -147,7 +147,7 @@ export default function VehicleWizard({ companyId, homeDistrict, onClose, onCrea
       return;
     }
     if (spec.hasCrew && (d.crewName.trim() || d.crewPhone.trim())) {
-      await supabase.from("vehicle_private").insert({
+      await db.from("vehicle_private").insert({
         vehicle_id: data.id, driver_name: d.crewName.trim() || null, driver_phone: d.crewPhone.trim() || null,
       });
     }

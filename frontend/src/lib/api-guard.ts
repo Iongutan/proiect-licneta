@@ -1,12 +1,12 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { supabaseServer } from "./supabase-server";
+import { currentUser } from "./server/auth";
 
 /**
  * Limitare de rată în memorie (fereastră fixă) per cheie. Protejează serviciile
  * costisitoare (OSRM, ML) de abuz. Pe mai multe instanțe fiecare are propriul
- * contor — suficient ca plasă de siguranță; limita globală o dă Supabase/infra.
+ * contor — suficient pentru aplicația locală.
  */
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
@@ -28,11 +28,28 @@ export function jsonError(status: number, message: string) {
 
 /** Cere o sesiune validă; întoarce id-ul utilizatorului sau un răspuns 401. */
 export async function requireUser(): Promise<{ userId: string } | { response: NextResponse }> {
-  const supabase = await supabaseServer();
-  const { data } = await supabase.auth.getClaims();
-  const sub = data?.claims?.sub;
-  if (!sub) return { response: jsonError(401, "Autentificare necesară.") };
-  return { userId: sub };
+  const user = await currentUser();
+  if (!user) return { response: jsonError(401, "Autentificare necesară.") };
+  return { userId: user.userId };
+}
+
+/**
+ * Cererile care modifică date vin doar din paginile aplicației: Origin trebuie
+ * să fie chiar gazda (pe lângă cookie-ul SameSite=Lax) — blochează CSRF.
+ */
+export function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  if (!origin || !host) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+export function clientIp(request: Request): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 }
 
 export async function readJson<T>(request: Request, maxBytes = 16_384): Promise<T | null> {

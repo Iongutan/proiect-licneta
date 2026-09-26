@@ -6,7 +6,7 @@ import type { Company } from "@/lib/db-types";
 import { DISTRICTS, districtById } from "@/lib/districts";
 import { fmtDateTime } from "@/lib/format";
 import { LEGAL_FORMS, displayCompanyName, formatIdno } from "@/lib/idno-validator";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 
 const KYC = {
   PENDING: { t: "În verificare", c: "badge-warn", hint: "Un administrator verifică IDNO-ul în Registrul de stat. Până atunci poți explora harta și posta cereri, dar nu poți rezerva sau semna contracte." },
@@ -32,16 +32,16 @@ export default function AccountForm({ company, userId, fullName, email, isCompan
     if (name.trim().length < 2) return setStatus({ kind: "error", text: "Denumirea firmei e prea scurtă." });
     if (phone && !/^\+?[0-9 ()-]{6,20}$/.test(phone)) return setStatus({ kind: "error", text: "Telefon invalid." });
     setPending(true);
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     const d = districtById(district);
     const results = await Promise.all([
       isCompanyAdmin
-        ? supabase.from("companies").update({
+        ? db.from("companies").update({
             name: name.trim(), address: address.trim() || null, phone: phone.trim() || null, district_id: d?.id ?? null,
             location: d ? `SRID=4326;POINT(${d.lon} ${d.lat})` : null,
           }).eq("id", company.id)
         : Promise.resolve({ error: null }),
-      supabase.from("profiles").update({ full_name: person.trim() || null }).eq("id", userId),
+      db.from("profiles").update({ full_name: person.trim() || null }).eq("id", userId),
     ]);
     setPending(false);
     const err = results.find((r) => r.error)?.error;

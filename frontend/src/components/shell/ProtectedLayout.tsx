@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/ui/Sidebar";
 import { displayCompanyName } from "@/lib/idno-validator";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 /**
  * Layout comun pentru paginile aplicației. Verificarea din proxy.ts e repetată

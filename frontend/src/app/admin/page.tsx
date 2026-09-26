@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import AdminPanel from "@/components/admin/AdminPanel";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 export const metadata: Metadata = { title: "Administrare" };
 

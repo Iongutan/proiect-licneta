@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import RequestsScreen from "@/components/requests/RequestsScreen";
-import { getViewer } from "@/lib/supabase-server";
+import { getViewer } from "@/lib/db-server";
 
 export const metadata: Metadata = { title: "Cereri de transport" };
 

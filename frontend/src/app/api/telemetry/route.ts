@@ -1,16 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { isLat, isLon, jsonError, rateLimited, readJson } from "@/lib/api-guard";
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/env";
+import { callRpc } from "@/lib/server/rpc";
 
 // Poziții GPS de la trackere / aplicația șoferului.
 // Autentificare: Authorization: Bearer <token de dispozitiv> (generat în pagina
 // vehiculului). Tokenul e verificat în baza de date prin hash SHA-256
 // (ingest_position); endpointul nu are nevoie de nicio cheie secretă.
-
-const anon = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
 
 interface Body {
   lat?: unknown;
@@ -29,9 +24,10 @@ export async function POST(request: Request) {
   const speed = typeof body.speed_kmh === "number" && body.speed_kmh >= 0 && body.speed_kmh <= 200 ? body.speed_kmh : null;
   const heading = typeof body.heading === "number" && Number.isInteger(body.heading) && body.heading >= 0 && body.heading < 360 ? body.heading : null;
 
-  const { data, error } = await anon.rpc("ingest_position", {
+  // Rulează ca rolul anonim: dreptul îl dă doar tokenul dispozitivului.
+  const { data, error } = await callRpc("ingest_position", {
     p_token: token, p_lat: body.lat, p_lon: body.lon, p_speed: speed, p_heading: heading,
-  });
+  }, null);
   if (error) return jsonError(502, "Poziția nu a putut fi salvată.");
   // false = token necunoscut sau poziție trimisă prea des; nu dezvăluim care.
   return NextResponse.json({ accepted: data === true }, { status: data ? 200 : 202 });

@@ -25,3 +25,8 @@
 - Supabase self-hosted `self-hosted/v0.8.2` (github.com/supabase/supabase/tree/master/docker) — stack local, gratuit, Apache 2.0
 - `playwright-core` + Chrome local — E2E fără descărcare de browsere
 - De evaluat pentru scalare: MapLibre GL JS, PMTiles (protomaps), deck.gl, k6, bge-m3 (Ollama)
+
+## Adăugate 2026-09-26 (v3)
+- `pg` 8 (node-postgres, pur JavaScript; pg-native NU e folosit) — conexiunea Next.js ↔ PostgreSQL local
+- `playwright-core` 1 — testul E2E (`npm run e2e`) cu Chrome/Edge instalat, fără descărcare de browsere
+- Scoase: `@supabase/ssr`, `@supabase/supabase-js` (înlocuite de stratul propriu)

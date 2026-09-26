@@ -9,7 +9,7 @@ import type { Company, KycStatus } from "@/lib/db-types";
 import { districtName } from "@/lib/districts";
 import { fmtDateTime } from "@/lib/format";
 import { displayCompanyName, formatIdno } from "@/lib/idno-validator";
-import { errorMessage, supabaseBrowser } from "@/lib/supabase";
+import { errorMessage, dbBrowser } from "@/lib/db-browser";
 
 interface AuditRow { id: number; action: string; entity: string; entity_id: string | null; company_id: string | null; created_at: string; details: Record<string, unknown> }
 
@@ -25,11 +25,11 @@ export default function AdminPanel() {
 
   useEffect(() => {
     let active = true;
-    const supabase = supabaseBrowser();
+    const db = dbBrowser();
     Promise.all([
-      supabase.from("companies").select("*").eq("kyc_status", filter).order("created_at", { ascending: false }).limit(200),
-      supabase.from("audit_log").select("*").order("created_at", { ascending: false }).limit(100),
-      supabase.from("companies").select("id, name").limit(5000),
+      db.from("companies").select("*").eq("kyc_status", filter).order("created_at", { ascending: false }).limit(200),
+      db.from("audit_log").select("*").order("created_at", { ascending: false }).limit(100),
+      db.from("companies").select("id, name").limit(5000),
     ]).then(([{ data: cs, error }, { data: a }, { data: all }]) => {
       if (!active) return;
       if (error) return setStatus({ kind: "error", text: errorMessage(error) });
@@ -45,7 +45,7 @@ export default function AdminPanel() {
   const review = async (c: Company, next: KycStatus) => {
     const note = next === "REJECTED" ? prompt(`Motivul respingerii pentru ${c.name}:`) : null;
     if (next === "REJECTED" && !note) return;
-    const { error } = await supabaseBrowser().rpc("review_company", { p_company: c.id, p_status: next, p_note: note });
+    const { error } = await dbBrowser().rpc("review_company", { p_company: c.id, p_status: next, p_note: note });
     if (error) setStatus({ kind: "error", text: errorMessage(error) });
     else {
       setStatus({ kind: "info", text: `${c.name}: ${next === "VERIFIED" ? "verificată" : "respinsă"}.` });
@@ -54,7 +54,7 @@ export default function AdminPanel() {
   };
 
   const refreshDemo = async () => {
-    const { data, error } = await supabaseBrowser().rpc("refresh_demo_trips");
+    const { data, error } = await dbBrowser().rpc("refresh_demo_trips");
     setStatus(error ? { kind: "error", text: errorMessage(error) } : { kind: "info", text: `${data} curse demo mutate la ora curentă.` });
   };
 
